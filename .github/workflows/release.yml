@@ -1,0 +1,207 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Release build matrix — Windows / Linux (via Tauri) + Android (via Capacitor)
+#
+# Fires on:
+#   • push of a `v*` tag   (e.g. `git tag v0.2.0 && git push origin v0.2.0`)
+#   • manual run via the Actions tab (workflow_dispatch)
+#
+# Each platform builds in parallel on its own runner and uploads its
+# artefacts to the workflow run. Download them from the run summary
+# page — no GitHub Release required.
+#
+# Cross-compilation rationale
+# ---------------------------
+# Tauri links against native webview bindings (WebView2 on Windows,
+# WebKit2GTK on Linux), so every desktop target needs a runner of its
+# own OS. Android is platform-agnostic because Gradle + the Android SDK
+# handle everything — we run it on Ubuntu since it's the cheapest runner
+# and the JDK is pre-installed.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Release builds
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ───────────────────────────── Windows (.exe installer + portable) ─────
+  windows:
+    name: Windows (NSIS installer + portable exe)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # Rust toolchain for the Tauri shell. The action pins to stable
+      # and caches `~/.cargo` / `target/` between runs.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build Tauri (NSIS)
+        # `--bundles nsis` overrides tauri.conf.json's `targets` so the
+        # Windows job produces the installer regardless of what other
+        # platforms in this workflow emit.
+        run: npm run tauri:build -- --bundles nsis
+
+      - name: Stage Windows artefacts
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist-artifacts | Out-Null
+          Copy-Item src-tauri/target/release/kturtle.exe `
+            dist-artifacts/KTurtle-${{ github.ref_name }}-portable.exe -Force
+          Copy-Item src-tauri/target/release/bundle/nsis/*-setup.exe `
+            dist-artifacts/ -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist-artifacts/*
+
+  # ──────────────────────────── Linux (.AppImage + .deb) ─────────────────
+  linux:
+    name: Linux (.AppImage + .deb)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "src-tauri -> target"
+
+      # Native deps Tauri needs on Linux. webkit2gtk-4.1 is the modern
+      # API (Tauri v2 requires this — not 4.0). The rest (libappindicator,
+      # librsvg, libayatana) cover the tray icon + SVG rendering.
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libayatana-appindicator3-dev \
+            build-essential \
+            curl \
+            wget \
+            file
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Build Tauri (AppImage + deb)
+        run: npm run tauri:build -- --bundles deb,appimage
+
+      - name: Stage Linux artefacts
+        run: |
+          mkdir -p dist-artifacts
+          cp src-tauri/target/release/bundle/deb/*.deb dist-artifacts/ || true
+          cp src-tauri/target/release/bundle/appimage/*.AppImage dist-artifacts/ || true
+          ls -la dist-artifacts/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist-artifacts/*
+
+  # ───────────────────────────── Android (.apk debug + release) ──────────
+  android:
+    name: Android (debug + release APK)
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      # JDK 21 is what Android Studio ships and what the bundled
+      # gradle-wrapper expects. Using Temurin for ABI parity with
+      # production Android Studio installs.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install npm deps
+        run: npm ci
+
+      - name: Sync Capacitor Android project
+        run: npm run android:sync
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Build release APK
+        # Uses the committed self-signed keystore + hardcoded password in
+        # android/app/build.gradle. Swap this out with a Play-grade
+        # keystore stored as a GitHub secret when you're ready to ship.
+        working-directory: android
+        run: ./gradlew assembleRelease
+
+      - name: Stage Android artefacts
+        run: |
+          mkdir -p dist-artifacts
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            dist-artifacts/KTurtle-${{ github.ref_name }}-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            dist-artifacts/KTurtle-${{ github.ref_name }}-release.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist-artifacts/*
+
+  # ────────────────────────── GitHub Release (tags only) ─────────────────
+  # When a `v*` tag triggers the workflow, roll all three platforms'
+  # artefacts into a single Release. Skipped on manual dispatch.
+  release:
+    name: Attach to GitHub Release
+    needs: [windows, linux, android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Flatten artefact tree
+        run: |
+          mkdir -p release
+          find all-artifacts -type f -exec cp {} release/ \;
+          ls -la release/
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true

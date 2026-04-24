@@ -277,6 +277,17 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
               onClick={() => { setShowLangSheet(true); setShowMobileMore(false); }}
             />
           </div>
+          {/*
+            Author credit, tucked at the bottom of the More sheet so it
+            never steals focus from actions but is always one tap away.
+            Serif + muted ink matches the desktop footer signature.
+          */}
+          <div
+            className="px-5 pb-5 pt-1 text-center italic text-[11.5px] text-ink-400"
+            style={{ fontFamily: 'var(--font-serif)' }}
+          >
+            {t('footer.author')}
+          </div>
         </BottomSheet>
       )}
 
