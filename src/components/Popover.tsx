@@ -132,16 +132,21 @@ export function Popover({
         triggerRef.current?.focus?.();
       }
     };
-    window.addEventListener('resize', handler);
-    window.addEventListener('scroll', handler, true);
+    // Passive scroll+touch listeners mean browsers can run them on the
+    // compositor thread without blocking scroll. We don't preventDefault
+    // here, so passive is safe and noticeably smoother on mobile.
+    const opts: AddEventListenerOptions = { passive: true };
+    const optsCap: AddEventListenerOptions = { passive: true, capture: true };
+    window.addEventListener('resize', handler, opts);
+    window.addEventListener('scroll', handler, optsCap);
     document.addEventListener('mousedown', close);
-    document.addEventListener('touchstart', close);
+    document.addEventListener('touchstart', close, opts);
     document.addEventListener('keydown', onKey);
     return () => {
-      window.removeEventListener('resize', handler);
-      window.removeEventListener('scroll', handler, true);
+      window.removeEventListener('resize', handler, opts);
+      window.removeEventListener('scroll', handler, optsCap);
       document.removeEventListener('mousedown', close);
-      document.removeEventListener('touchstart', close);
+      document.removeEventListener('touchstart', close, opts);
       document.removeEventListener('keydown', onKey);
     };
   }, [open, onClose, reposition, triggerRef]);

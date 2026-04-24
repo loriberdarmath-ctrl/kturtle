@@ -100,6 +100,23 @@ function InspectorPaneImpl({
   // count (errors.length) because that's what the user cares about at a glance.
   const errorGroups = useMemo(() => groupErrors(errors), [errors]);
 
+  // Split code once per render, not once per visible error row. Avoids an
+  // O(rows × lines) blowup when a program with 20 errors has a 500-line
+  // source. Only recomputes when the source actually changes.
+  const codeLines = useMemo(() => (code ? code.split('\n') : []), [code]);
+
+  // Summary line + unique-line count are both derived from `errors`. One
+  // memo computes both so we don't scan the list twice per render.
+  const errorsSummary = useMemo(() => {
+    if (errors.length === 0) return { summary: '', uniqueLines: 0 };
+    const set = new Set<number>();
+    for (const e of errors) set.add(e.line);
+    const arr = Array.from(set).sort((a, b) => a - b);
+    const summary =
+      arr.length <= 4 ? `lines ${arr.join(', ')}` : `${arr.length} lines`;
+    return { summary, uniqueLines: arr.length };
+  }, [errors]);
+
   const counts = {
     errors: errors.length,
     output: output.length,
@@ -172,13 +189,13 @@ function InspectorPaneImpl({
                       ? t(
                           'console.errorsFoundGrouped',
                           errors.length,
-                          new Set(errors.map(e => e.line)).size,
+                          errorsSummary.uniqueLines,
                           errorGroups.length,
                         )
                       : t('console.errorsFound', errors.length)}
                   </span>
                   <span className="text-[10.5px] text-ink-500 font-mono tab-nums">
-                    {summarizeErrorLines(errors)}
+                    {errorsSummary.summary}
                   </span>
                 </div>
                 <ul className="divide-y divide-line">
@@ -187,7 +204,7 @@ function InspectorPaneImpl({
                       key={`${group.error.line}-${group.error.column ?? 0}-${i}`}
                       group={group}
                       index={i + 1}
-                      code={code}
+                      codeLines={codeLines}
                       t={t}
                       onJumpToLine={onJumpToLine}
                     />
@@ -366,10 +383,9 @@ function InspectRow({
   );
 }
 
-function getLineSnippet(code: string, line: number): string {
-  if (!code || line < 1) return '';
-  const lines = code.split('\n');
-  return lines[line - 1] ?? '';
+function getLineSnippet(codeLines: string[], line: number): string {
+  if (line < 1 || line > codeLines.length) return '';
+  return codeLines[line - 1] ?? '';
 }
 
 /**
@@ -380,18 +396,18 @@ function getLineSnippet(code: string, line: number): string {
 function ErrorRow({
   group,
   index,
-  code,
+  codeLines,
   t,
   onJumpToLine,
 }: {
   group: ErrorGroup;
   index: number;
-  code: string;
+  codeLines: string[];
   t: (key: string, ...args: (string | number)[]) => string;
   onJumpToLine: (line: number) => void;
 }) {
   const { error, lines, count } = group;
-  const snippet = getLineSnippet(code, error.line);
+  const snippet = getLineSnippet(codeLines, error.line);
   const phaseTone =
     error.phase === 'runtime'
       ? 'bg-[#fbeee7] border-[#f1d6cc] text-[#c85a2a]'
@@ -512,14 +528,6 @@ function ErrorRow({
       </div>
     </li>
   );
-}
-
-/** "3 problems on lines 4, 7, 12" — helps users gauge spread at a glance. */
-function summarizeErrorLines(errors: TurtleError[]): string {
-  const lines = Array.from(new Set(errors.map(e => e.line))).sort((a, b) => a - b);
-  if (lines.length === 0) return '';
-  if (lines.length <= 4) return `lines ${lines.join(', ')}`;
-  return `${lines.length} lines`;
 }
 
 export const InspectorPane = memo(InspectorPaneImpl);

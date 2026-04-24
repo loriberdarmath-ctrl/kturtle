@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+// framer-motion was previously used for a handful of trivial fades and
+// slide-ups. That pulled in ~40 KB of gzipped JS for what CSS keyframes
+// cover in a dozen lines — so we use `.anim-fade` / `.anim-rise` from
+// src/index.css instead. Re-keying a span on value change gives us the
+// "pop on update" effect without a runtime animation engine.
 
 interface SVGConverterProps {
     onGenerateCode: (code: string) => void;
@@ -219,19 +223,13 @@ export function SVGConverter({ onGenerateCode, onClose }: SVGConverterProps) {
     }, [originalImage, qualityLevel, renderMode]);
 
     return (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+        <div
             onClick={onClose}
-            className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-6 bg-ink-900/30 backdrop-blur-sm overflow-y-auto"
+            className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-0 sm:p-6 bg-ink-900/30 backdrop-blur-sm overflow-y-auto anim-fade"
         >
-            <motion.div
-                initial={{ y: 16, scale: 0.98, opacity: 0 }}
-                animate={{ y: 0, scale: 1, opacity: 1 }}
-                transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+            <div
                 onClick={(e) => e.stopPropagation()}
-                className="w-full sm:max-w-5xl min-h-screen sm:min-h-0 sm:max-h-[92vh] bg-white sm:rounded-2xl overflow-hidden border border-line shadow-[0_24px_80px_-20px_rgba(26,24,20,0.18)] flex flex-col md:flex-row"
+                className="w-full sm:max-w-5xl min-h-screen sm:min-h-0 sm:max-h-[92vh] bg-white sm:rounded-2xl overflow-hidden border border-line shadow-[0_24px_80px_-20px_rgba(26,24,20,0.18)] flex flex-col md:flex-row anim-rise"
             >
                 {/* Left: Preview */}
                 <div className="relative flex-1 flex flex-col p-5 sm:p-7 border-b md:border-b-0 md:border-r border-line bg-paper-soft/40 min-h-[50vh] md:min-h-0">
@@ -260,15 +258,10 @@ export function SVGConverter({ onGenerateCode, onClose }: SVGConverterProps) {
                     </div>
 
                     <div className="flex-1 flex flex-col items-center justify-center relative">
-                        <AnimatePresence mode="wait">
-                            {!originalImage && (
-                                <motion.div
-                                    key="upload"
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    exit={{ opacity: 0 }}
-                                    className="w-full h-full border-2 border-dashed border-line hover:border-accent hover:bg-accent-wash/40 transition-colors rounded-2xl flex flex-col items-center justify-center cursor-pointer group absolute inset-0 z-20"
-                                >
+                        {!originalImage && (
+                            <div
+                                className="w-full h-full border-2 border-dashed border-line hover:border-accent hover:bg-accent-wash/40 transition-colors rounded-2xl flex flex-col items-center justify-center cursor-pointer group absolute inset-0 z-20 anim-fade"
+                            >
                                     <input
                                         type="file"
                                         accept=".svg"
@@ -291,12 +284,11 @@ export function SVGConverter({ onGenerateCode, onClose }: SVGConverterProps) {
                                     >
                                         Drop an <span className="italic text-accent" style={{ fontFamily: 'var(--font-serif)' }}>SVG</span> here
                                     </p>
-                                    <p className="text-ink-500 text-[13px] mt-2">
-                                        or click to choose a file
-                                    </p>
-                                </motion.div>
-                            )}
-                        </AnimatePresence>
+                                <p className="text-ink-500 text-[13px] mt-2">
+                                    or click to choose a file
+                                </p>
+                            </div>
+                        )}
 
                         <div
                             className={`w-full h-full flex flex-col relative items-center justify-center transition-opacity duration-300 ${originalImage ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
@@ -379,43 +371,37 @@ export function SVGConverter({ onGenerateCode, onClose }: SVGConverterProps) {
                         <div className="bg-paper-soft/50 border border-line rounded-xl p-4 space-y-3 font-sans text-[13px]">
                             <div className="flex justify-between items-center">
                                 <span className="text-ink-500">Lines of code</span>
-                                <AnimatePresence mode="popLayout">
-                                    <motion.span
-                                        key={stats.lines}
-                                        initial={{ y: -6, opacity: 0 }}
-                                        animate={{ y: 0, opacity: 1 }}
-                                        className={`font-mono tab-nums ${stats.lines > 2000 ? 'text-accent' : 'text-ink-900'}`}
-                                    >
-                                        {stats.lines.toLocaleString()}
-                                    </motion.span>
-                                </AnimatePresence>
+                                {/* `key` on the span forces React to remount it on every
+                                    value change, which replays the one-shot `.anim-pop`
+                                    CSS animation — the same "number flips" effect we
+                                    used to achieve with AnimatePresence+motion.span. */}
+                                <span
+                                    key={stats.lines}
+                                    className={`font-mono tab-nums anim-pop ${stats.lines > 2000 ? 'text-accent' : 'text-ink-900'}`}
+                                >
+                                    {stats.lines.toLocaleString()}
+                                </span>
                             </div>
                             <div className="h-px bg-line" />
                             <div className="flex justify-between items-center">
                                 <span className="text-ink-500">Operations</span>
-                                <AnimatePresence mode="popLayout">
-                                    <motion.span
-                                        key={stats.operations}
-                                        initial={{ y: -6, opacity: 0 }}
-                                        animate={{ y: 0, opacity: 1 }}
-                                        className="font-mono tab-nums text-ink-900"
-                                    >
-                                        {stats.operations.toLocaleString()}
-                                    </motion.span>
-                                </AnimatePresence>
+                                <span
+                                    key={stats.operations}
+                                    className="font-mono tab-nums text-ink-900 anim-pop"
+                                >
+                                    {stats.operations.toLocaleString()}
+                                </span>
                             </div>
 
                             {stats.warning && (
-                                <motion.div
-                                    initial={{ opacity: 0, height: 0 }}
-                                    animate={{ opacity: 1, height: 'auto' }}
-                                    className="text-[12px] text-accent flex items-start gap-2 bg-accent-wash/60 p-3 rounded-lg border border-accent/20 mt-2"
+                                <div
+                                    className="text-[12px] text-accent flex items-start gap-2 bg-accent-wash/60 p-3 rounded-lg border border-accent/20 mt-2 anim-fade"
                                 >
                                     <svg className="w-4 h-4 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                                         <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4a2 2 0 00-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
                                     </svg>
                                     <p className="leading-relaxed">{stats.warning}</p>
-                                </motion.div>
+                                </div>
                             )}
                         </div>
                     </div>
@@ -440,7 +426,7 @@ export function SVGConverter({ onGenerateCode, onClose }: SVGConverterProps) {
                     </div>
 
                 </div>
-            </motion.div>
-        </motion.div>
+            </div>
+        </div>
     );
 }

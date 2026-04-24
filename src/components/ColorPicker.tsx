@@ -119,22 +119,30 @@ export function ColorPicker({ open, initialColor = '#c85a2a', onClose, onInsertC
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-ink-900/30 backdrop-blur-sm anim-fade overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-ink-900/30 backdrop-blur-sm anim-fade overflow-hidden"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={t('color.title')}
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+      }}
     >
       {/*
-        Modal layout strategy: the dialog is constrained to 90vh so it never
+        Modal layout strategy: the dialog is constrained so it never
         exceeds the viewport. The header + footer are fixed (flex-shrink-0)
         and the middle body scrolls independently when content is taller
         than available space (common on short laptop screens / landscape
-        phones). This is what was causing the footer to overflow before.
+        phones).
+
+        Mobile twist: on phones we dock the picker to the bottom of the
+        screen (a "sheet") — easier to reach with one hand, and the
+        on-screen keyboard doesn't push a centered dialog off the top.
       */}
       <div
-        className="surface w-full max-w-[460px] anim-rise flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[min(92vh,720px)] my-auto"
+        className="surface w-full max-w-[460px] anim-sheet sm:anim-rise flex flex-col rounded-b-none sm:rounded-[14px] max-h-[calc(var(--app-vh)_-_env(safe-area-inset-top))] sm:max-h-[min(92vh,720px)] my-0 sm:my-auto"
         onClick={e => e.stopPropagation()}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         <div className="flex items-center justify-between px-5 py-3 border-b border-line flex-shrink-0">
           <h3 className="font-display text-[17px] text-ink-900" style={{ letterSpacing: '-0.01em' }}>
@@ -269,14 +277,14 @@ export function ColorPicker({ open, initialColor = '#c85a2a', onClose, onInsertC
               style={{ backgroundColor: currentHex }}
               aria-label="Preview"
             />
-            <div className="flex-1 grid grid-cols-8 gap-1.5">
+            <div className="flex-1 grid grid-cols-6 sm:grid-cols-8 gap-1.5">
               {DEFAULT_SWATCHES.map(hex => (
                 <button
                   key={hex}
                   type="button"
                   onClick={() => setHsv(hexToHsv(hex))}
-                  className="aspect-square rounded-md border border-line hover:scale-110 transition-transform"
-                  style={{ backgroundColor: hex }}
+                  className="aspect-square rounded-md border border-line hover:scale-110 active:scale-105 transition-transform"
+                  style={{ backgroundColor: hex, minHeight: 32 }}
                   aria-label={hex}
                   title={hex}
                 />
@@ -289,14 +297,14 @@ export function ColorPicker({ open, initialColor = '#c85a2a', onClose, onInsertC
               <div className="text-[10.5px] uppercase tracking-[0.12em] text-ink-500 mb-1.5">
                 {t('color.recent')}
               </div>
-              <div className="grid grid-cols-12 gap-1.5">
+              <div className="grid grid-cols-8 sm:grid-cols-12 gap-1.5">
                 {recent.map(hex => (
                   <button
                     key={hex}
                     type="button"
                     onClick={() => setHsv(hexToHsv(hex))}
-                    className="aspect-square rounded-md border border-line hover:scale-110 transition-transform"
-                    style={{ backgroundColor: hex }}
+                    className="aspect-square rounded-md border border-line hover:scale-110 active:scale-105 transition-transform"
+                    style={{ backgroundColor: hex, minHeight: 28 }}
                     aria-label={hex}
                     title={hex}
                   />
