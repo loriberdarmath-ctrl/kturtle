@@ -1,0 +1,208 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Fraunces", "Times New Roman", serif;
+  --font-serif: "Instrument Serif", "Fraunces", serif;
+  --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Consolas", monospace;
+
+  /* Warm paper palette */
+  --color-paper: #faf8f4;
+  --color-paper-soft: #f4f1ea;
+  --color-paper-sunk: #ede9df;
+  --color-line: #e4dfd2;
+  --color-line-soft: #ede8da;
+
+  /* Ink (text) */
+  --color-ink-900: #1a1814;
+  --color-ink-800: #2b2722;
+  --color-ink-700: #403a32;
+  --color-ink-600: #5c564c;
+  --color-ink-500: #807869;
+  --color-ink-400: #a49c8c;
+  --color-ink-300: #c2bba9;
+  --color-ink-200: #d8d2c1;
+
+  /* Single warm accent (muted terracotta) */
+  --color-accent: #c85a2a;
+  --color-accent-soft: #e8896a;
+  --color-accent-wash: #f7e8e0;
+  --color-accent-ink: #ffffff;
+
+  /* Supportive tints */
+  --color-sage: #5f7a5a;
+  --color-sage-wash: #e8eee3;
+}
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background: #faf8f4;
+  color: #1a1814;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "ss01", "cv11";
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  background-image:
+    radial-gradient(
+      ellipse 60% 40% at 15% 0%,
+      rgba(200, 90, 42, 0.04),
+      transparent 70%
+    ),
+    radial-gradient(
+      ellipse 50% 40% at 100% 100%,
+      rgba(95, 122, 90, 0.035),
+      transparent 70%
+    );
+  background-attachment: fixed;
+  min-height: 100vh;
+}
+
+/* Selection */
+::selection {
+  background: rgba(200, 90, 42, 0.18);
+  color: #1a1814;
+}
+
+/* Scrollbar (subtle) */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d8d2c1;
+  border: 2px solid #faf8f4;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #c2bba9;
+}
+
+/* Gentle entrance animations */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Dropdown / popover entrance — small lift + fade. Snappier than .anim-rise
+   so menus feel responsive; used by the portal-rendered Popover. */
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.anim-rise {
+  animation: rise 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+.anim-fade {
+  animation: fade 0.6s ease-out both;
+}
+.anim-pop {
+  animation: pop 0.14s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  transform-origin: top left;
+}
+.delay-1 { animation-delay: 0.04s; }
+.delay-2 { animation-delay: 0.1s; }
+.delay-3 { animation-delay: 0.16s; }
+.delay-4 { animation-delay: 0.22s; }
+.delay-5 { animation-delay: 0.28s; }
+
+/* Tabular numbers for metrics */
+.tab-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Soft decorative rule */
+.soft-rule {
+  height: 1px;
+  background: linear-gradient(
+    to right,
+    transparent,
+    #e4dfd2 20%,
+    #d8d2c1 50%,
+    #e4dfd2 80%,
+    transparent
+  );
+}
+
+/* A small "pill" look */
+.pill {
+  border-radius: 999px;
+}
+
+/* Focus ring */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Toolbar horizontal scroller — hides scrollbar but keeps scroll ability
+   so the middle-zone toolbar items never force the whole bar to wrap onto a
+   second line (which used to shift menu anchors and create clipping bugs). */
+.toolbar-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  /* Fade indicators at the edges hint at scrollable content */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 12px,
+    #000 calc(100% - 12px),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 12px,
+    #000 calc(100% - 12px),
+    transparent 100%
+  );
+}
+.toolbar-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+/* Card surface */
+.surface {
+  background: #ffffff;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow:
+    0 1px 2px rgba(26, 24, 20, 0.03),
+    0 8px 24px -12px rgba(26, 24, 20, 0.06);
+}
+
+.surface-soft {
+  background: #fbf9f3;
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}

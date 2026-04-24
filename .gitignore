@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+out/
+
+# Vercel / deploy artifacts
+.vercel/
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Vite cache
+.vite/
+node_modules/.vite/
+
+# Local generator / experiment scratch (not part of the app)
+output/
+generate.cjs
+generate_color.js
+generate_from_image.cjs
+generate_optimized.js
+generate_scanlines.js
+horse-*.svg
+horse_generation_tutorial.md
+run-turtle.ts
+save-output-server.js
+save-output-server.mjs
+skillforthisprojectuse.md
+vecteezy_*.svg
+.agent/

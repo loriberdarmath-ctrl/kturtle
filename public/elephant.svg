@@ -1,0 +1,158 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="500" height="400" viewBox="0 0 500 400">
+  <!-- Gradient definitions -->
+  <defs>
+    <linearGradient id="skyGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#87CEEB"/>
+      <stop offset="80%" style="stop-color:#E0F6FF"/>
+    </linearGradient>
+    <radialGradient id="sunGradient" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:#FFEB3B"/>
+      <stop offset="100%" style="stop-color:#FFE066"/>
+    </radialGradient>
+  </defs>
+
+  <!-- Sky -->
+  <rect width="500" height="400" fill="url(#skyGradient)"/>
+  
+  <!-- Sun -->
+  <circle cx="450" cy="50" r="25" fill="url(#sunGradient)"/>
+  
+  <!-- Clouds -->
+  <g fill="white" opacity="0.95">
+    <circle cx="60" cy="55" r="15"/>
+    <circle cx="90" cy="50" r="15"/>
+    <circle cx="40" cy="52" r="12"/>
+    <circle cx="280" cy="38" r="15"/>
+    <circle cx="315" cy="33" r="12"/>
+    <circle cx="250" cy="36" r="13"/>
+  </g>
+  
+  <!-- Grass -->
+  <rect x="0" y="330" width="500" height="70" fill="#4CAF50"/>
+  
+  <!-- Grass tufts -->
+  <g stroke="#2E7D32" stroke-width="3" stroke-linecap="round">
+    <line x1="20" y1="335" x2="25" y2="315"/>
+    <line x1="44" y1="335" x2="40" y2="318"/>
+    <line x1="68" y1="335" x2="72" y2="312"/>
+    <line x1="92" y1="335" x2="88" y2="320"/>
+    <line x1="116" y1="335" x2="120" y2="310"/>
+    <line x1="140" y1="335" x2="138" y2="318"/>
+    <line x1="164" y1="335" x2="168" y2="315"/>
+    <line x1="188" y1="335" x2="185" y2="320"/>
+    <line x1="212" y1="335" x2="216" y2="312"/>
+    <line x1="236" y1="335" x2="232" y2="318"/>
+    <line x1="260" y1="335" x2="264" y2="315"/>
+    <line x1="284" y1="335" x2="280" y2="320"/>
+    <line x1="308" y1="335" x2="312" y2="310"/>
+    <line x1="332" y1="335" x2="328" y2="318"/>
+    <line x1="356" y1="335" x2="360" y2="315"/>
+    <line x1="380" y1="335" x2="378" y2="320"/>
+    <line x1="404" y1="335" x2="408" y2="312"/>
+    <line x1="428" y1="335" x2="424" y2="318"/>
+    <line x1="452" y1="335" x2="456" y2="315"/>
+    <line x1="476" y1="335" x2="472" y2="320"/>
+  </g>
+  
+  <!-- Flowers -->
+  <circle cx="70" cy="348" r="5" fill="#FF69B4"/>
+  <circle cx="200" cy="352" r="4" fill="#FFD700"/>
+  <circle cx="380" cy="350" r="5" fill="#FF6B6B"/>
+  
+  <!-- Shadow under elephant -->
+  <ellipse cx="230" cy="342" rx="140" ry="12" fill="rgba(0,0,0,0.12)"/>
+
+  <!-- ========== ELEPHANT ========== -->
+  
+  <!-- TAIL -->
+  <path d="M 82 195 Q 60 230, 52 270 Q 45 300, 55 310" 
+        stroke="#707070" stroke-width="10" fill="none" stroke-linecap="round"/>
+  <!-- Tail tuft -->
+  <ellipse cx="55" cy="315" rx="10" ry="14" fill="#5D5D5D"/>
+  <path d="M 50 310 L 42 325" stroke="#5D5D5D" stroke-width="5" stroke-linecap="round"/>
+  <path d="M 58 312 L 65 328" stroke="#5D5D5D" stroke-width="5" stroke-linecap="round"/>
+  
+  <!-- BACK LEGS -->
+  <rect x="115" y="235" width="40" height="90" rx="18" fill="#707070"/>
+  <rect x="215" y="240" width="40" height="85" rx="18" fill="#707070"/>
+  
+  <!-- Back feet -->
+  <ellipse cx="135" cy="325" rx="27" ry="14" fill="#606060"/>
+  <ellipse cx="235" cy="325" rx="27" ry="14" fill="#606060"/>
+  
+  <!-- Back toenails -->
+  <ellipse cx="118" cy="335" rx="5" ry="8" fill="#E0E0E0"/>
+  <ellipse cx="135" cy="338" rx="5" ry="8" fill="#E0E0E0"/>
+  <ellipse cx="152" cy="335" rx="5" ry="8" fill="#E0E0E0"/>
+  
+  <!-- BODY -->
+  <ellipse cx="200" cy="200" rx="130" ry="90" fill="#8A8A8A"/>
+  
+  <!-- Body highlight (lighter on top) -->
+  <ellipse cx="190" cy="175" rx="70" ry="40" fill="#9E9E9E" opacity="0.7"/>
+  
+  <!-- FRONT LEGS -->
+  <rect x="257" y="240" width="46" height="95" rx="20" fill="#8A8A8A"/>
+  <rect x="314" y="240" width="46" height="95" rx="20" fill="#8A8A8A"/>
+  
+  <!-- Front feet -->
+  <ellipse cx="280" cy="330" rx="29" ry="15" fill="#9E9E9E"/>
+  <ellipse cx="337" cy="330" rx="29" ry="15" fill="#9E9E9E"/>
+  
+  <!-- Front toenails -->
+  <ellipse cx="261" cy="340" rx="6" ry="9" fill="#F5F5F5"/>
+  <ellipse cx="280" cy="343" rx="6" ry="9" fill="#F5F5F5"/>
+  <ellipse cx="299" cy="340" rx="6" ry="9" fill="#F5F5F5"/>
+  <ellipse cx="318" cy="340" rx="6" ry="9" fill="#F5F5F5"/>
+  <ellipse cx="337" cy="343" rx="6" ry="9" fill="#F5F5F5"/>
+  <ellipse cx="356" cy="340" rx="6" ry="9" fill="#F5F5F5"/>
+  
+  <!-- EAR (behind head) -->
+  <ellipse cx="285" cy="145" rx="50" ry="60" fill="#707070"/>
+  <ellipse cx="290" cy="150" rx="35" ry="42" fill="#E8B4B4"/>
+  
+  <!-- HEAD -->
+  <ellipse cx="355" cy="155" rx="70" ry="65" fill="#8A8A8A"/>
+  
+  <!-- Head highlight -->
+  <ellipse cx="340" cy="135" rx="35" ry="25" fill="#9E9E9E" opacity="0.6"/>
+  
+  <!-- TRUNK -->
+  <path d="M 405 185 
+           Q 430 210, 445 250 
+           Q 460 295, 455 325 
+           Q 450 350, 430 355
+           Q 410 355, 405 340
+           Q 402 325, 420 320
+           Q 440 315, 455 295" 
+        stroke="#8A8A8A" stroke-width="40" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  
+  <!-- Trunk wrinkles -->
+  <path d="M 420 215 Q 435 218, 442 213" stroke="#707070" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M 438 250 Q 450 253, 455 248" stroke="#707070" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M 450 285 Q 460 288, 463 283" stroke="#707070" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M 445 315 Q 455 318, 458 313" stroke="#707070" stroke-width="2" fill="none" stroke-linecap="round"/>
+  
+  <!-- TUSK -->
+  <path d="M 392 205 Q 405 235, 395 265 Q 385 295, 365 310" 
+        stroke="#FFFEF0" stroke-width="14" fill="none" stroke-linecap="round"/>
+  <path d="M 392 205 Q 405 235, 395 265 Q 385 295, 365 310" 
+        stroke="#D4C4A8" stroke-width="2" fill="none" stroke-linecap="round"/>
+  
+  <!-- EYE -->
+  <ellipse cx="378" cy="135" rx="18" ry="20" fill="white"/>
+  <ellipse cx="382" cy="138" rx="12" ry="14" fill="#3D2314"/>
+  <ellipse cx="384" cy="140" rx="7" ry="9" fill="#1a1a1a"/>
+  <ellipse cx="388" cy="132" rx="5" ry="6" fill="white"/>
+  <ellipse cx="380" cy="145" rx="2" ry="3" fill="rgba(255,255,255,0.5)"/>
+  
+  <!-- Eyebrow -->
+  <path d="M 360 110 Q 378 102, 395 110" stroke="#5D5D5D" stroke-width="5" fill="none" stroke-linecap="round"/>
+  
+  <!-- Cute blush -->
+  <ellipse cx="340" cy="175" rx="14" ry="10" fill="#FFB6C1" opacity="0.5"/>
+  
+  <!-- Forehead wrinkle -->
+  <path d="M 332 125 Q 345 120, 355 125" stroke="#707070" stroke-width="2" fill="none" stroke-linecap="round"/>
+  
+</svg>
