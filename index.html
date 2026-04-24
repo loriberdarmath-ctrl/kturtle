@@ -22,15 +22,16 @@
     <!-- Favicon + iOS home-screen icon use the official KTurtle logo
          (Wikimedia Commons, File:KTurtle_logo.svg). One asset serves all
          modern browsers as a vector icon. -->
-    <link rel="icon" type="image/svg+xml" href="/kturtle-logo.svg" />
-    <link rel="apple-touch-icon" href="/kturtle-logo.svg" />
+    <!-- Relative paths (no leading slash) so the same index.html works
+         from http:// in dev, file:// in Tauri, and android-asset:// in
+         Capacitor. A leading slash would resolve to the device root on
+         Android and break the app. -->
+    <link rel="icon" type="image/svg+xml" href="kturtle-logo.svg" />
+    <link rel="apple-touch-icon" href="kturtle-logo.svg" />
     <title>KTurtle — a quiet place to draw with code</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,500&family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
+    <!-- Self-hosted fonts. The bundle under /public/fonts/ is generated
+         by scripts/fetch-fonts.ps1 so the app works fully offline. -->
+    <link rel="stylesheet" href="fonts/fonts.css" />
   </head>
   <body>
     <div id="root"></div>

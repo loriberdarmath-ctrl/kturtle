@@ -3,8 +3,42 @@ node_modules/
 
 # Build output
 dist/
+dist-native/
 build/
 out/
+
+# Tauri
+src-tauri/target/
+src-tauri/gen/
+
+# Capacitor — we DO commit the android/ scaffold so contributors can
+# reproduce builds without reinstalling Android SDK packages. Only the
+# per-build outputs need ignoring.
+android/app/build/
+android/.gradle/
+android/build/
+android/captures/
+android/local.properties
+android/app/release/
+android/app/debug/
+*.iml
+
+# Gradle
+.gradle/
+
+# APK / AAB outputs
+*.apk
+*.aab
+
+# Android signing keystores — NEVER commit. Keep local only.
+# If lost, rotating an app's signing key on Google Play is painful,
+# so back this up securely (password manager / encrypted vault).
+*.keystore
+*.jks
+
+# Packaged desktop/mobile build artifacts. These go on GitHub Releases,
+# not in the repo, to keep clone size sane.
+builds/
 
 # Vercel / deploy artifacts
 .vercel/

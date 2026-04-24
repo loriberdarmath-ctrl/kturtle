@@ -1,0 +1,31 @@
+{
+  "appId": "com.kturtle.app",
+  "appName": "KTurtle",
+  "//webDir": "Capacitor copies this folder into the Android project under assets/public. dist-native is produced by `npm run build:native` and uses relative paths + local fonts, so the app runs fully offline once installed.",
+  "webDir": "dist-native",
+  "bundledWebRuntime": false,
+  "android": {
+    "//allowMixedContent": "We only ever load assets from the APK, never network, so this stays off. Keeps the app robust against any accidental http:// reference in code.",
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "//": "Short splash so the app feels snappy. Background matches the paper palette so there's no flash when React mounts.",
+      "launchShowDuration": 600,
+      "launchAutoHide": true,
+      "backgroundColor": "#faf8f4",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false,
+      "splashFullScreen": false,
+      "splashImmersive": false
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#faf8f4",
+      "overlaysWebView": false
+    }
+  }
+}

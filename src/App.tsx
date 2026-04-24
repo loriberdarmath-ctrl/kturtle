@@ -7,14 +7,14 @@ import { ColorPicker } from './components/ColorPicker';
 import { Popover } from './components/Popover';
 import { OpenFileDialog } from './components/OpenFileDialog';
 import { remember as rememberRecent } from './utils/recentFiles';
-import { drawingsToSvg, downloadSvg } from './utils/exportSvg';
+import { drawingsToSvg } from './utils/exportSvg';
+import { saveTurtleFile, openTurtleFile, exportSvgFile, exportPngFile } from './utils/nativeIO';
 import { toKTurtleFile } from './interpreter/ktFileFormat';
 import { tokenize } from './interpreter/tokenizer';
 import { Parser } from './interpreter/parser';
 import { Interpreter, TurtleState, DrawCommand } from './interpreter/interpreter';
 import { TurtleError } from './interpreter/errors';
 import { examples, defaultExample } from './examples';
-import { SVGConverter } from './components/SVGConverter';
 import { useT } from './i18n/context';
 import { useIsMobile } from './utils/useBreakpoint';
 import { MobileShell } from './components/MobileShell';
@@ -37,7 +37,6 @@ export function App() {
   const [fileName, setFileName] = useState<string>('turtle.turtle');
   const [exportedImage, setExportedImage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
-  const [showConverterModal, setShowConverterModal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showOpenDialog, setShowOpenDialog] = useState(false);
   const [showReference, setShowReference] = useState(false);
@@ -413,19 +412,17 @@ export function App() {
   // so the file opens correctly in upstream KTurtle regardless of its UI
   // language. We also remember the plain text in our recent-files list so
   // re-opening inside the web app doesn't have to round-trip the wrapping.
-  const saveFile = useCallback(() => {
+  const saveFile = useCallback(async () => {
     const finalName = fileName.endsWith('.turtle') ? fileName : `${fileName}.turtle`;
     const serialized = toKTurtleFile(code);
-    const blob = new Blob([serialized], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = finalName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 0);
-    rememberRecent(finalName, code);
+    const result = await saveTurtleFile(serialized, finalName);
+    if (result.ok && !result.cancelled) {
+      // Remember the *original* plain code (not the @(english)-wrapped
+      // on-disk serialization) so the recent-files flow opens fast
+      // without re-parsing the wrapper.
+      const savedName = result.path?.replace(/^.*[\\/]/, '') || finalName;
+      rememberRecent(savedName, code);
+    }
   }, [code, fileName]);
 
   const openFile = useCallback(() => {
@@ -441,10 +438,10 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const exportSvg = useCallback(() => {
+  const exportSvg = useCallback(async () => {
     const svg = drawingsToSvg(turtle, drawings);
     const base = fileName.replace(/\.(turtle|logo|txt)$/i, '') || 'kturtle-drawing';
-    downloadSvg(svg, base);
+    await exportSvgFile(svg, `${base}.svg`);
   }, [turtle, drawings, fileName]);
 
   const newFile = useCallback(() => {
@@ -509,11 +506,10 @@ export function App() {
           setShowOpenDialog,
           setShowExportModal,
           setExportedImage,
-          setShowConverterModal,
           handleFilePicked,
           // Modal visibility + data so MobileShell can render them fullscreen.
           exportedImage, showExportModal,
-          showColorPicker, showOpenDialog, showConverterModal,
+          showColorPicker, showOpenDialog,
         }}
       />
     );
@@ -722,17 +718,6 @@ export function App() {
             <span className="hidden md:inline">{t('toolbar.colorPicker')}</span>
           </button>
 
-          {/* SVG converter */}
-          <button
-            onClick={() => setShowConverterModal(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-md transition-colors"
-            title={t('toolbar.svgToCode')}
-          >
-            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="hidden lg:inline">{t('toolbar.svgToCode')}</span>
-          </button>
           </div>
           {/* ── END MIDDLE ZONE ── */}
 
@@ -1025,55 +1010,73 @@ export function App() {
 
       {showExportModal && exportedImage && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-ink-900/30 backdrop-blur-sm anim-fade"
+          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-ink-900/30 backdrop-blur-sm anim-fade"
           onClick={() => setShowExportModal(false)}
         >
-          <div className="surface w-full max-w-2xl anim-rise" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-line">
+          {/*
+            Export PNG preview.
+
+            The modal is capped at `calc(100vh - 2rem)` with a flex column
+            so the preview image gets the vertical slack and scrolls when
+            it can't fit — previously a large canvas export would push
+            the Save button off the bottom of the screen.
+          */}
+          <div
+            className="surface w-full max-w-2xl anim-rise flex flex-col"
+            onClick={e => e.stopPropagation()}
+            style={{ maxHeight: 'calc(100vh - 1.5rem)' }}
+          >
+            <div className="flex-shrink-0 flex items-center justify-between px-5 py-3 border-b border-line">
               <h3 className="font-display text-[18px] text-ink-900" style={{ letterSpacing: '-0.01em' }}>
                 {t('toolbar.file.exportPng')}
               </h3>
               <button
                 onClick={() => setShowExportModal(false)}
                 className="w-8 h-8 rounded-full hover:bg-paper-soft text-ink-500 hover:text-ink-900 inline-flex items-center justify-center transition-colors"
+                aria-label={t('color.cancel')}
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
-            <div className="p-5">
-              <div className="bg-paper-soft border border-line rounded-xl p-4 mb-4 flex items-center justify-center">
-                <img src={exportedImage} alt="Exported canvas" className="max-w-full mx-auto block rounded" />
+            {/* Scrollable preview pane — the only part that can grow. */}
+            <div className="flex-1 min-h-0 overflow-auto p-5">
+              <div className="bg-paper-soft border border-line rounded-xl p-4 flex items-center justify-center">
+                <img
+                  src={exportedImage}
+                  alt="Exported canvas"
+                  className="max-w-full h-auto block rounded"
+                  style={{ maxHeight: '55vh', objectFit: 'contain' }}
+                />
               </div>
-              <div className="flex flex-wrap gap-2">
-                <a
-                  href={exportedImage}
-                  download="kturtle-drawing.png"
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-ink-900 text-paper rounded-md text-[13px] font-medium hover:bg-accent transition-colors"
-                >
-                  {t('toolbar.file.exportPng')}
-                </a>
-                <button
-                  onClick={() => setShowExportModal(false)}
-                  className="ml-auto inline-flex items-center px-4 py-2 text-ink-500 hover:text-ink-900 text-[13px]"
-                >
-                  {t('color.cancel')}
-                </button>
-              </div>
+            </div>
+            <div className="flex-shrink-0 px-5 py-3 border-t border-line flex flex-wrap items-center gap-2 bg-paper-soft/40">
+              <button
+                onClick={async () => {
+                  const base =
+                    fileName.replace(/\.(turtle|logo|txt)$/i, '') || 'kturtle-drawing';
+                  await exportPngFile(exportedImage, `${base}.png`);
+                  setShowExportModal(false);
+                }}
+                className="inline-flex items-center gap-2 px-4 py-2 bg-ink-900 text-paper rounded-md text-[13px] font-medium hover:bg-accent transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+                </svg>
+                {t('toolbar.file.exportPng')}
+              </button>
+              <button
+                onClick={() => setShowExportModal(false)}
+                className="ml-auto inline-flex items-center px-4 py-2 text-ink-500 hover:text-ink-900 text-[13px]"
+              >
+                {t('color.cancel')}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {showConverterModal && (
-        <SVGConverter
-          onClose={() => setShowConverterModal(false)}
-          onGenerateCode={generatedCode => {
-            setCode(generatedCode);
-          }}
-        />
-      )}
     </div>
   );
 }
