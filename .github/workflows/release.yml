@@ -60,13 +60,23 @@ jobs:
         run: npm run tauri:build -- --bundles nsis
 
       - name: Stage Windows artefacts
+        # Two copies per asset: a version-stamped one (audit trail) AND a
+        # stable-named one. Stable names are what the landing page and any
+        # install scripts link to via /releases/latest/download/<name>,
+        # so they must NOT include the tag.
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist-artifacts | Out-Null
+          # Versioned copies
           Copy-Item src-tauri/target/release/kturtle.exe `
             dist-artifacts/KTurtle-${{ github.ref_name }}-portable.exe -Force
           Copy-Item src-tauri/target/release/bundle/nsis/*-setup.exe `
             dist-artifacts/ -Force
+          # Stable-named copies for /releases/latest/download URLs
+          Copy-Item src-tauri/target/release/kturtle.exe `
+            dist-artifacts/KTurtle-portable.exe -Force
+          Copy-Item src-tauri/target/release/bundle/nsis/*-setup.exe `
+            dist-artifacts/KTurtle-x64-setup.exe -Force
 
       - uses: actions/upload-artifact@v4
         with:
@@ -115,10 +125,19 @@ jobs:
         run: npm run tauri:build -- --bundles deb,appimage
 
       - name: Stage Linux artefacts
+        # Two copies per asset — same rationale as the Windows job:
+        # versioned originals for provenance, stable-named copies so the
+        # landing page's /releases/latest/download/ links keep working
+        # across tags without needing edits.
         run: |
           mkdir -p dist-artifacts
           cp src-tauri/target/release/bundle/deb/*.deb dist-artifacts/ || true
           cp src-tauri/target/release/bundle/appimage/*.AppImage dist-artifacts/ || true
+          # Stable-named copies (install-linux.sh expects these names)
+          cp src-tauri/target/release/bundle/appimage/*.AppImage \
+             dist-artifacts/KTurtle-linux-x86_64.AppImage || true
+          cp src-tauri/target/release/bundle/deb/*.deb \
+             dist-artifacts/KTurtle-linux-amd64.deb || true
           ls -la dist-artifacts/
 
       - uses: actions/upload-artifact@v4
@@ -166,12 +185,18 @@ jobs:
         run: ./gradlew assembleRelease
 
       - name: Stage Android artefacts
+        # Versioned copies for provenance + stable-named copies so the
+        # landing page download buttons resolve via /releases/latest/download/.
         run: |
           mkdir -p dist-artifacts
           cp android/app/build/outputs/apk/debug/app-debug.apk \
             dist-artifacts/KTurtle-${{ github.ref_name }}-debug.apk
           cp android/app/build/outputs/apk/release/app-release.apk \
             dist-artifacts/KTurtle-${{ github.ref_name }}-release.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk \
+            dist-artifacts/KTurtle-debug.apk
+          cp android/app/build/outputs/apk/release/app-release.apk \
+            dist-artifacts/KTurtle-release.apk
 
       - uses: actions/upload-artifact@v4
         with:

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+
+  "buildCommand": "npm run build && mkdir -p dist/about && cp -r docs/. dist/about/ && cp scripts/install-linux.sh dist/_install.sh",
+  "outputDirectory": "dist",
+  "framework": null,
+  "cleanUrls": true,
+  "trailingSlash": false
+}

@@ -1,0 +1,47 @@
+# Keep the Vercel upload lean — we only need the source needed to run
+# `npm run build`. Everything else bloats uploads and, in the case of
+# src-tauri/target, blows past Vercel's 100 MB file-size limit.
+
+# Large native build trees
+src-tauri/target/
+src-tauri/gen/
+android/
+builds/
+dist-native/
+
+# Dependency cache (Vercel runs `npm install` itself)
+node_modules/
+
+# Local artifacts that already live on the Git ignore list
+dist/
+.agent/
+.devcontainer/
+.github/
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.log
+.DS_Store
+Thumbs.db
+
+# Keystore / signing material — never uploaded anywhere
+*.keystore
+*.jks
+*.apk
+*.aab
+
+# Tauri target cache fragments that slip through target/ ignoring
+**/*.rlib
+**/*.rmeta
+
+# Generator scratch files from old experiments (see .gitignore)
+output/
+generate*.js
+generate*.cjs
+horse-*.svg
+horse_generation_tutorial.md
+run-turtle.ts
+save-output-server.*
+vecteezy_*.svg
+skillforthisprojectuse.md

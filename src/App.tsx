@@ -980,6 +980,28 @@ export function App() {
             >
               {t('footer.author')}
             </span>
+            {/*
+              Tiny "about / home" link back to the marketing landing page.
+              Shown only in the web build — native Tauri/Android shells
+              don't have a concept of "/" to go back to. The `<base>`
+              detection via BUILD_TARGET at bundle time is done through
+              vite's `import.meta.env.BASE_URL`, which is "/" for the web
+              target and "./" for native (see vite.config.ts). We can
+              infer the flavour by checking whether the base is absolute.
+            */}
+            {import.meta.env.BASE_URL === '/' && (
+              <>
+                <span className="text-ink-300 hidden sm:inline">·</span>
+                <a
+                  href="/"
+                  className="italic whitespace-nowrap hover:text-ink-900 transition-colors"
+                  style={{ fontFamily: 'var(--font-serif)' }}
+                  title="About KTurtle"
+                >
+                  about ↗
+                </a>
+              </>
+            )}
           </div>
         </div>
         {showReference && (

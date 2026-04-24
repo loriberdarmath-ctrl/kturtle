@@ -1,0 +1,988 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<!--
+  KTurtle landing page
+  ─────────────────────────────────────────────────────────────────────────
+  Single static HTML page served by GitHub Pages from /docs/. Hand-written
+  CSS only (no framework) for three reasons:
+    • The page needs to feel warm, paper-ish, editorial — not a Tailwind
+      marketing template. Custom CSS is easier when the whole visual idea
+      is "graph paper + IBM Plex serif + one green accent."
+    • Zero build step means the Pages workflow is a one-line "upload docs/".
+    • Page weight stays under ~8 KB (HTML + inline CSS) so it loads before
+      the GitHub spinner finishes on a fresh connection.
+
+  All download links use github.com/<repo>/releases/latest/download/<asset>
+  which 302-redirects to whatever the newest tagged release contains. No
+  JavaScript to fetch the latest version, no maintenance when we cut a new
+  tag.
+-->
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="theme-color" content="#067a07" />
+<meta name="description" content="KTurtle — a quiet place to draw with code. TurtleScript programming environment for learners. Free, offline, open source. Windows, Linux, Android, and web." />
+<meta property="og:title" content="KTurtle — a quiet place to draw with code" />
+<meta property="og:description" content="TurtleScript programming for learners. One codebase, four platforms, fully offline. Free and open source." />
+<meta property="og:image" content="./kturtle-logo.svg" />
+<title>KTurtle — a quiet place to draw with code</title>
+<link rel="icon" type="image/svg+xml" href="./kturtle-logo.svg" />
+
+<!--
+  Typography: we pair two old-school-feeling fonts from Google Fonts.
+    • "Fraunces" — a stylistic, soft-serif display face with an unusual
+      gentle chunkiness. It carries the editorial tone. Used only for
+      headlines and "wordmark" touches so the character shows without
+      overstaying.
+    • "IBM Plex Mono" — monospaced, feels like a patient typewriter.
+      Reinforces the "write code, then watch it draw" idea without
+      resorting to the usual "Inter + Fira Code" AI-template pair.
+  Body text is Plex Sans (also from IBM Plex) which ships in the same
+  family so the visual rhythm stays cohesive.
+
+  One request, one weight per face — we deliberately don't pull huge
+  weight ranges so the network payload stays tiny.
+-->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link
+  href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap"
+  rel="stylesheet"
+/>
+
+<style>
+  /* ── Design tokens ─────────────────────────────────────────────────────
+     One accent green (lifted straight from the KTurtle logo's gradient)
+     plus a four-step warm paper scale. Everything else is derived. */
+  :root {
+    --ink:          #15130e;   /* body text; warm near-black, not #000 */
+    --ink-soft:     #55503f;   /* captions, helper text */
+    --paper:        #f4efe5;   /* page background — unbleached paper */
+    --paper-soft:   #ece6d6;   /* secondary surfaces */
+    --paper-edge:   #d8cfb8;   /* hairline borders */
+    --moss:         #067a07;   /* primary accent (turtle-shell green) */
+    --moss-deep:    #044a05;   /* hover state on accent */
+    --moss-mist:    #d5e8c7;   /* 10% accent tint for soft fills */
+    --rule:         rgba(21,19,14,0.18);
+
+    --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --font-body:    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+
+  /* ── Reset + base ──────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: var(--font-body);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.55;
+    font-size: 17px;
+    /* Paper texture: a faint graph-paper grid. We use two overlapping
+       linear-gradients instead of an image so the whole page stays under
+       10 KB and scales crisply on any DPR. */
+    background-image:
+      linear-gradient(var(--paper-edge) 1px, transparent 1px),
+      linear-gradient(90deg, var(--paper-edge) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-position: -1px -1px;
+    /* Slight vignette via radial gradient on ::before keeps the grid from
+       feeling flat / Excel-like (see .paper-vignette below). */
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Warm vignette overlay — graph paper alone is too cold. This softens
+     the edges so the page feels like a real sheet under lamp light. */
+  body::before {
+    content: "";
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at 50% 40%,
+      rgba(244,239,229,0) 40%,
+      rgba(244,239,229,0.55) 75%,
+      rgba(212,199,170,0.45) 100%);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  main, header, footer { position: relative; z-index: 1; }
+
+  a { color: var(--moss); text-decoration: none; }
+  a:hover { color: var(--moss-deep); text-decoration: underline; text-underline-offset: 3px; }
+
+  /* ── Layout shell ──────────────────────────────────────────────────── */
+  .wrap {
+    max-width: 72rem;
+    margin: 0 auto;
+    padding: 0 1.5rem;
+  }
+
+  /* ── Top nav ───────────────────────────────────────────────────────── */
+  header {
+    padding: 1.75rem 0 0;
+  }
+  .nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.375rem;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .brand img { width: 32px; height: 32px; display: block; }
+  .brand:hover { text-decoration: none; }
+  .nav-links {
+    display: flex;
+    gap: 1.5rem;
+    font-size: 0.9375rem;
+    font-family: var(--font-mono);
+  }
+  .nav-links a { color: var(--ink-soft); }
+  .nav-links a:hover { color: var(--moss); text-decoration: none; }
+  @media (max-width: 560px) {
+    .nav-links { display: none; } /* logo alone is enough on phones */
+  }
+
+  /* ── Hero ──────────────────────────────────────────────────────────── */
+  .hero {
+    padding: 5rem 0 4rem;
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: 4rem;
+    align-items: center;
+  }
+  @media (max-width: 880px) {
+    .hero { grid-template-columns: 1fr; gap: 2.5rem; padding: 3rem 0 2rem; }
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--moss);
+    margin-bottom: 1.25rem;
+  }
+  .eyebrow::before {
+    content: "";
+    width: 2rem; height: 1px;
+    background: var(--moss);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(2.5rem, 6vw, 4.75rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    /* Fraunces supports optical sizing; enable it at display sizes for
+       slightly wider terminals and a touch more contrast. */
+    font-variation-settings: "opsz" 120;
+    margin-bottom: 1.5rem;
+  }
+  h1 em {
+    font-style: italic;
+    color: var(--moss);
+    font-variation-settings: "opsz" 120;
+  }
+
+  .lede {
+    font-size: 1.1875rem;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    max-width: 32ch;
+    margin-bottom: 2rem;
+  }
+
+  .cta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.875rem;
+    align-items: center;
+  }
+
+  /*
+    Primary button: solid moss block, slab-ish mono label. We use a pseudo-
+    shadow (a lower, offset solid copy) instead of box-shadow so the effect
+    feels like letterpress / linocut, not Material Design.
+  */
+  .btn {
+    --btn-bg: var(--moss);
+    --btn-fg: var(--paper);
+    --btn-border: var(--moss-deep);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.25rem;
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 0.9375rem;
+    letter-spacing: 0.02em;
+    color: var(--btn-fg);
+    background: var(--btn-bg);
+    border: 1.5px solid var(--btn-border);
+    border-radius: 2px;
+    position: relative;
+    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
+    box-shadow: 3px 3px 0 var(--btn-border);
+    cursor: pointer;
+  }
+  .btn:hover {
+    transform: translate(-1px, -1px);
+    box-shadow: 4px 4px 0 var(--btn-border);
+    text-decoration: none;
+    color: var(--btn-fg);
+  }
+  .btn:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 var(--btn-border);
+  }
+  .btn.ghost {
+    --btn-bg: transparent;
+    --btn-fg: var(--ink);
+    --btn-border: var(--ink);
+  }
+  .btn svg { width: 1em; height: 1em; flex-shrink: 0; }
+
+  /* ── Hero illustration: a CSS turtle drawing a square on a grid ─────
+     Pure HTML+CSS. The turtle is the logo SVG; the "drawing" is four
+     animated strokes that trace a square. Reinforces the core idea
+     ("write code → it draws") without video or heavyweight canvas. */
+  .turtle-stage {
+    position: relative;
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    max-width: 380px;
+    margin: 0 auto;
+    border: 1.5px solid var(--paper-edge);
+    background: rgba(255,255,255,0.5);
+    border-radius: 4px;
+    overflow: hidden;
+    /* A lighter sub-grid inside the stage so it reads as a "drawing
+       canvas" separate from the page's background grid. */
+    background-image:
+      linear-gradient(rgba(85,80,63,0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(85,80,63,0.08) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  .turtle-stage::after {
+    /* Corner label: 'canvas 320×320' in the bottom right. Mono + small
+       caps, like a ruler reading. */
+    content: "canvas";
+    position: absolute;
+    bottom: 0.5rem; right: 0.625rem;
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    color: var(--ink-soft);
+    opacity: 0.55;
+  }
+  .turtle-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .turtle-stroke {
+    fill: none;
+    stroke: var(--moss);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 280;
+    stroke-dashoffset: 280;
+    animation: drawStroke 6s ease-in-out infinite;
+  }
+  .turtle-stroke:nth-child(2) { animation-delay: 1.5s; }
+  .turtle-stroke:nth-child(3) { animation-delay: 3s; }
+  .turtle-stroke:nth-child(4) { animation-delay: 4.5s; }
+  @keyframes drawStroke {
+    0%, 10% { stroke-dashoffset: 280; }
+    35%     { stroke-dashoffset: 0; }
+    /* Hold finished line, then fade out as the next stroke starts. */
+    85%     { stroke-dashoffset: 0; opacity: 1; }
+    100%    { stroke-dashoffset: 0; opacity: 0; }
+  }
+  /* Small pen-dot riding the perimeter. 10px circle in the accent moss
+     green, with a soft halo so it reads as "ink laid down on paper."
+     We centre the element by pulling it back 5px (half its size) via
+     transform — that way the top/left coordinates reference the dot's
+     geometric centre, which matches the corners of the square. */
+  .pen-dot {
+    position: absolute;
+    width: 10px; height: 10px;
+    margin: -5px 0 0 -5px;
+    border-radius: 50%;
+    background: var(--moss);
+    box-shadow:
+      0 0 0 3px rgba(6,122,7,0.18),
+      0 1px 2px rgba(0,0,0,0.12);
+    top: 26%; left: 26%;
+    animation: penWalk 24s linear infinite;
+  }
+  @keyframes penWalk {
+    /* Path: four edges of the same centred square the lines trace.
+       Each side takes 25% of the 24s cycle (6s per side). */
+    0%   { top: 26%; left: 26%; }
+    25%  { top: 26%; left: 74%; }
+    50%  { top: 74%; left: 74%; }
+    75%  { top: 74%; left: 26%; }
+    100% { top: 26%; left: 26%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .turtle-stroke { animation: none; stroke-dashoffset: 0; }
+    .pen-dot       { animation: none; top: 26%; left: 26%; }
+  }
+
+  /* ── Section rhythm ─────────────────────────────────────────────────── */
+  .section {
+    padding: 4rem 0;
+    border-top: 1px solid var(--rule);
+  }
+  .section-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+    flex-wrap: wrap;
+  }
+  .section-head h2 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    color: var(--ink);
+    font-variation-settings: "opsz" 72;
+  }
+  .section-head .section-meta {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-soft);
+  }
+
+  /* ── Download cards grid ─────────────────────────────────────────────
+     Four platforms. Each card is a bordered "specimen" with the platform
+     name as a display typographic headline, a mono command/filename
+     below, and a primary action. Inspired by technical-manual layouts. */
+  .platform-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+  }
+  @media (max-width: 1000px) { .platform-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 560px)  { .platform-grid { grid-template-columns: 1fr; } }
+
+  .platform {
+    position: relative;
+    padding: 1.75rem 1.5rem 1.5rem;
+    background: var(--paper-soft);
+    border: 1.5px solid var(--paper-edge);
+    border-radius: 3px;
+    display: flex;
+    flex-direction: column;
+    min-height: 18rem;
+    overflow: hidden;
+    transition: transform 0.18s ease, border-color 0.18s ease;
+  }
+  .platform:hover {
+    transform: translateY(-2px);
+    border-color: var(--moss);
+  }
+  .platform-tag {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    margin-bottom: 0.75rem;
+  }
+  .platform-tag::before {
+    content: "";
+    display: inline-block;
+    width: 0.5rem; height: 0.5rem;
+    border-radius: 50%;
+    background: var(--moss);
+    margin-right: 0.5rem;
+    vertical-align: middle;
+  }
+  .platform h3 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.5rem;
+    line-height: 1.1;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    margin-bottom: 0.5rem;
+  }
+  .platform p {
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+    line-height: 1.5;
+    margin-bottom: 1.25rem;
+  }
+  .platform .file {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink);
+    background: rgba(255,255,255,0.55);
+    border: 1px dashed var(--paper-edge);
+    padding: 0.5rem 0.75rem;
+    border-radius: 2px;
+    margin-bottom: 1rem;
+    word-break: break-all;
+  }
+  .platform .dl {
+    margin-top: auto;
+  }
+  .platform .dl .btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .platform .alt {
+    display: block;
+    margin-top: 0.75rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    text-align: center;
+  }
+  .platform .alt a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
+  .platform .alt a:hover { color: var(--moss); }
+
+  /*
+    Linux card gets a featured treatment: its "one-line install" snippet
+    is the visual centerpiece since Linux is the path we want people to
+    take. Slightly larger, with a copy button.
+  */
+  .platform.linux {
+    grid-column: span 2;
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--paper);
+  }
+  @media (max-width: 560px) { .platform.linux { grid-column: span 1; } }
+  .platform.linux h3         { color: var(--paper); }
+  .platform.linux .platform-tag { color: var(--moss-mist); }
+  .platform.linux p          { color: rgba(244,239,229,0.72); }
+  .platform.linux .snippet   {
+    position: relative;
+    background: rgba(244,239,229,0.06);
+    border: 1px solid rgba(244,239,229,0.18);
+    border-radius: 2px;
+    padding: 0.875rem 2.75rem 0.875rem 0.875rem;
+    margin-bottom: 1.25rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--paper);
+    line-height: 1.45;
+    overflow: auto;
+    white-space: pre;
+  }
+  .platform.linux .snippet .prompt { color: var(--moss); user-select: none; }
+  .platform.linux .copy-btn {
+    position: absolute;
+    top: 0.5rem; right: 0.5rem;
+    width: 1.875rem; height: 1.875rem;
+    border: 1px solid rgba(244,239,229,0.25);
+    background: transparent;
+    color: var(--paper);
+    border-radius: 2px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .platform.linux .copy-btn:hover {
+    background: rgba(244,239,229,0.12);
+    border-color: var(--moss);
+  }
+  .platform.linux .copy-btn svg { width: 0.9rem; height: 0.9rem; }
+  .platform.linux .copy-btn.copied { color: var(--moss); border-color: var(--moss); }
+
+  /* ── About section ──────────────────────────────────────────────────
+     Two-column editorial block. Left: running prose. Right: a literal
+     code sample of TurtleScript — so visitors see what programming in
+     the app actually looks like. */
+  .about {
+    display: grid;
+    grid-template-columns: 1.1fr 0.9fr;
+    gap: 3rem;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    .about { grid-template-columns: 1fr; gap: 2rem; }
+  }
+  .about p {
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    margin-bottom: 1.25rem;
+    max-width: 38ch;
+  }
+  .about p.drop::first-letter {
+    /* Proper drop cap. Only fires on the first paragraph with .drop. */
+    font-family: var(--font-display);
+    font-weight: 700;
+    float: left;
+    font-size: 3.75rem;
+    line-height: 0.85;
+    padding: 0.35rem 0.5rem 0 0;
+    color: var(--moss);
+    font-variation-settings: "opsz" 144;
+  }
+  .about p strong { color: var(--ink); }
+
+  /*
+    Credit to the original KTurtle project. A sidebar-ish block set off
+    from the running prose with a left rule (newspaper "editor's note"
+    style). Smaller type + mono label reinforces that this is factual
+    attribution, not marketing copy.
+  */
+  .credit {
+    margin-top: 2rem;
+    padding: 1rem 0 0.25rem 1.25rem;
+    border-left: 3px solid var(--moss);
+    max-width: 40ch;
+  }
+  .credit .credit-label {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--moss);
+    margin-bottom: 0.4rem;
+  }
+  .credit p {
+    font-size: 0.95rem;
+    line-height: 1.55;
+    color: var(--ink-soft);
+    margin-bottom: 0.5rem;
+    max-width: 40ch;
+  }
+  .credit p strong { color: var(--ink); font-weight: 500; }
+  .credit .credit-links {
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    margin-top: 0.2rem;
+  }
+  .credit .credit-links a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
+  .credit .credit-links a:hover { color: var(--moss); }
+
+  pre.sample {
+    font-family: var(--font-mono);
+    font-size: 0.9rem;
+    line-height: 1.65;
+    background: var(--ink);
+    color: var(--paper);
+    padding: 1.25rem 1.5rem;
+    border-radius: 4px;
+    overflow: auto;
+    position: relative;
+    box-shadow: 6px 6px 0 var(--moss-mist);
+  }
+  pre.sample .kw  { color: #f2c66d; }       /* keyword: repeat, forward */
+  pre.sample .num { color: var(--moss-mist); } /* numbers */
+  pre.sample .cm  { color: #9a9486; font-style: italic; } /* comments */
+
+  /* ── Features (three pillars) ───────────────────────────────────── */
+  .pillars {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2rem;
+  }
+  @media (max-width: 800px) { .pillars { grid-template-columns: 1fr; gap: 1.5rem; } }
+  .pillar h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 1.25rem;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+  }
+  .pillar h4 .num {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: var(--moss);
+    background: var(--moss-mist);
+    padding: 0.2rem 0.45rem;
+    border-radius: 2px;
+    letter-spacing: 0.08em;
+  }
+  .pillar p {
+    font-size: 0.9375rem;
+    color: var(--ink-soft);
+    line-height: 1.6;
+  }
+
+  /* ── Footer ─────────────────────────────────────────────────────── */
+  footer {
+    padding: 3rem 0 2.5rem;
+    border-top: 1px solid var(--rule);
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  footer a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
+  footer a:hover { color: var(--moss); }
+  footer .mark {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+  }
+  footer .mark img { width: 18px; height: 18px; opacity: 0.7; }
+
+  /* ── Entrance animation — one orchestrated load ─────────────────── */
+  .fade-up {
+    opacity: 0;
+    transform: translateY(16px);
+    animation: fadeUp 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+  }
+  .fade-up.d1 { animation-delay: 0.15s; }
+  .fade-up.d2 { animation-delay: 0.3s; }
+  .fade-up.d3 { animation-delay: 0.45s; }
+  .fade-up.d4 { animation-delay: 0.6s; }
+  @keyframes fadeUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fade-up { animation: none; opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <nav class="nav">
+      <a class="brand" href="./">
+        <img src="./kturtle-logo.svg" alt="" />
+        <span>KTurtle</span>
+      </a>
+      <div class="nav-links">
+        <a href="/app">Try online</a>
+        <a href="#download">Download</a>
+        <a href="#about">About</a>
+        <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a>
+      </div>
+    </nav>
+  </header>
+
+  <main>
+    <!-- ── Hero ─────────────────────────────────────────────────────── -->
+    <section class="hero">
+      <div>
+        <div class="eyebrow fade-up">Turtle graphics · for learners</div>
+        <h1 class="fade-up d1">
+          A quiet place<br/>to draw <em>with code.</em>
+        </h1>
+        <p class="lede fade-up d2">
+          KTurtle is a tiny programming environment where you type a command
+          and watch a turtle draw. Free, offline, open source. One
+          codebase — four places to run it.
+        </p>
+        <div class="cta-row fade-up d3">
+          <!--
+            Primary CTA is now the hosted web app (same origin, so no
+            external redirect). The download path is a secondary option
+            for offline users.
+          -->
+          <a class="btn" href="/app">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <path d="M5 4l10 6-10 6V4z" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Try it online
+          </a>
+          <a class="btn ghost" href="#download">
+            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+              <path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Or download
+          </a>
+          <a class="btn ghost" href="https://github.com/loriberdarmath-ctrl/Kturtleweb" aria-label="View source on GitHub" style="padding-left: 0.75rem; padding-right: 0.75rem;">
+            <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M10 .3a10 10 0 00-3.16 19.48c.5.1.68-.22.68-.48v-1.69c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.12-1.47-1.12-1.47-.91-.63.07-.62.07-.62 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.1.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.55 9.55 0 015 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0010 .3z"/>
+            </svg>
+          </a>
+        </div>
+        <p class="hint fade-up d3" style="margin-top:1rem; font-family:var(--font-mono); font-size:0.8125rem; color:var(--ink-soft); letter-spacing:0.02em;">
+          No install, no account. Runs entirely in your browser.
+        </p>
+      </div>
+
+      <!-- CSS-animated square being drawn. The turtle cursor itself used
+           to ride along here; removed to keep the composition focused on
+           the drawing act rather than the mascot. A small "pen dot"
+           traces the path instead, which feels quieter and doesn't
+           duplicate the brand mark in the nav. -->
+      <div class="turtle-stage fade-up d4" aria-hidden="true">
+        <svg class="turtle-svg" viewBox="0 0 400 400" preserveAspectRatio="none">
+          <!-- Four edges of a centred square. Each trace animates in turn. -->
+          <line class="turtle-stroke" x1="104" y1="104" x2="296" y2="104" />
+          <line class="turtle-stroke" x1="296" y1="104" x2="296" y2="296" />
+          <line class="turtle-stroke" x1="296" y1="296" x2="104" y2="296" />
+          <line class="turtle-stroke" x1="104" y1="296" x2="104" y2="104" />
+        </svg>
+        <!-- Tiny pen-tip that moves along the square's perimeter, keeping
+             the sense of a turtle drawing without showing the logo. -->
+        <span class="pen-dot"></span>
+      </div>
+    </section>
+
+    <!-- ── Downloads ───────────────────────────────────────────────── -->
+    <section class="section" id="download">
+      <div class="section-head">
+        <h2>Get KTurtle</h2>
+        <div class="section-meta">v1 · released builds</div>
+      </div>
+
+      <div class="platform-grid">
+
+        <!-- ── Linux: featured card with copy-paste install ─────────── -->
+        <article class="platform linux">
+          <div class="platform-tag">Linux · recommended</div>
+          <h3>One-line install</h3>
+          <p>
+            Copy this into a terminal. Downloads the AppImage, drops it into
+            <code style="font-family:var(--font-mono); color:var(--moss-mist);">~/.local/bin</code>,
+            and registers a menu entry. No sudo.
+          </p>
+          <div class="snippet" id="install-snippet"><span class="prompt">$</span> curl -fsSL https://kturtle.vercel.app/_install.sh | bash
+<button class="copy-btn" id="copy-btn" type="button" aria-label="Copy install command">
+  <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
+    <rect x="6" y="6" width="10" height="11" rx="1.5"/>
+    <path d="M4 14V4a1 1 0 011-1h9" stroke-linecap="round"/>
+  </svg>
+</button></div>
+          <div class="dl">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-linux-x86_64.AppImage">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Or download .AppImage directly
+            </a>
+            <span class="alt" style="color:rgba(244,239,229,0.6);">
+              Debian/Ubuntu?
+              <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest" style="color:var(--moss-mist);">.deb available →</a>
+            </span>
+          </div>
+        </article>
+
+        <!-- ── Windows ──────────────────────────────────────────────── -->
+        <article class="platform">
+          <div class="platform-tag">Windows 10+</div>
+          <h3>Installer</h3>
+          <p>Per-user install. No admin required. ~4 MB.</p>
+          <div class="file">KTurtle-x64-setup.exe</div>
+          <div class="dl">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-x64-setup.exe">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Download .exe
+            </a>
+            <span class="alt">
+              or <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-portable.exe">portable build</a>
+            </span>
+          </div>
+        </article>
+
+        <!-- ── Android ──────────────────────────────────────────────── -->
+        <article class="platform">
+          <div class="platform-tag">Android 8+</div>
+          <h3>APK (sideload)</h3>
+          <p>Enable "install unknown apps" for your browser, then open the file.</p>
+          <div class="file">KTurtle-release.apk</div>
+          <div class="dl">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-release.apk">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Download .apk
+            </a>
+            <span class="alt">
+              or <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-debug.apk">debug build</a>
+            </span>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ── About ───────────────────────────────────────────────────── -->
+    <section class="section" id="about">
+      <div class="section-head">
+        <h2>What is it?</h2>
+        <div class="section-meta">Made for learners</div>
+      </div>
+
+      <div class="about">
+        <div>
+          <p class="drop">
+            KTurtle is a modern take on the old Logo idea: you give a turtle
+            simple instructions, and it draws what you said. The language is
+            small enough to read out loud; the canvas is a quiet place to
+            make things. The goal isn't to teach <em>syntax</em> — it's to
+            make the first hour of programming feel like play.
+          </p>
+          <p>
+            The entire app is a single <strong>React codebase</strong> that
+            ships as a website, a Windows / Linux desktop app, and an Android
+            app. Same interpreter, same canvas, same keyboard shortcuts on
+            every device. No telemetry. No accounts. No network after the
+            binary lands on your machine.
+          </p>
+          <p>
+            Free and open source under the GPL. Pull requests and bug
+            reports welcome on
+            <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a>.
+          </p>
+
+          <!--
+            Attribution to the original KTurtle project. Honouring upstream
+            is non-negotiable here: the name, the pedagogy, and the whole
+            idea of a Logo-style teaching environment come from the KDE
+            project. This page ships as a reimplementation — same spirit,
+            new platforms — and we want visitors to know where the
+            lineage starts. Authors listed are the primary maintainers
+            credited in the upstream KTurtle repository on invent.kde.org.
+          -->
+          <aside class="credit" aria-label="Credit to the original KTurtle">
+            <span class="credit-label">In the lineage of</span>
+            <p>
+              <strong>KTurtle</strong> is a long-running KDE educational
+              project originated by <strong>Cies Breijs</strong> and
+              <strong>Anne-Marie Mahfouf</strong>, with contributions from
+              the wider KDE community. This site hosts an independent
+              reimplementation that shares the name and teaching model with
+              permission of its GPL licence.
+            </p>
+            <p class="credit-links">
+              <a href="https://edu.kde.org/kturtle/">Original project</a> ·
+              <a href="https://invent.kde.org/education/kturtle">Upstream source</a> ·
+              <a href="https://docs.kde.org/stable5/en/kturtle/kturtle/index.html">Handbook</a>
+            </p>
+          </aside>
+        </div>
+
+        <!--
+          Live sample of TurtleScript. Hand-tokenised so we don't pull a
+          syntax highlighter (would double the page weight). Colours match
+          the design system.
+        -->
+        <pre class="sample" aria-label="Sample KTurtle program"><span class="cm"># draw a star</span>
+<span class="kw">reset</span>
+<span class="kw">repeat</span> <span class="num">5</span> [
+  <span class="kw">forward</span> <span class="num">150</span>
+  <span class="kw">turnright</span> <span class="num">144</span>
+]
+<span class="kw">penup</span>
+<span class="kw">forward</span> <span class="num">60</span>
+<span class="kw">print</span> <span style="color:#e8a87c;">"hello!"</span></pre>
+      </div>
+    </section>
+
+    <!-- ── Three pillars ───────────────────────────────────────────── -->
+    <section class="section">
+      <div class="section-head">
+        <h2>Why this one</h2>
+        <div class="section-meta">Three rules we kept</div>
+      </div>
+      <div class="pillars">
+        <div class="pillar">
+          <h4><span class="num">01</span> Offline forever</h4>
+          <p>
+            Fonts, icons, and the interpreter are bundled with the binary.
+            Install once, fly across the world with no signal, and the app
+            still draws. The Android build doesn't even request
+            <code style="font-family:var(--font-mono); color:var(--ink);">INTERNET</code>
+            permission.
+          </p>
+        </div>
+        <div class="pillar">
+          <h4><span class="num">02</span> Small and quiet</h4>
+          <p>
+            Under 5 MB on every platform. No popups, no tutorials-that-won't-end,
+            no "rate this app." The editor, the canvas, and a manual you can
+            read in ten minutes. That's it.
+          </p>
+        </div>
+        <div class="pillar">
+          <h4><span class="num">03</span> Built to be read</h4>
+          <p>
+            The commands are English words: <em>forward, repeat, turnleft.</em>
+            A child who can read can write programs. A teacher with no coding
+            background can grade them.
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <span class="mark">
+      <img src="./kturtle-logo.svg" alt="" />
+      KTurtle · reimplementation by Narek Balayan · GPL-3.0
+    </span>
+    <span>
+      After the <a href="https://edu.kde.org/kturtle/">KDE KTurtle</a> ·
+      <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a> ·
+      <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases">Releases</a>
+    </span>
+  </footer>
+</div>
+
+<script>
+  // One-line install snippet: copy-to-clipboard button.
+  // Progressive enhancement — the snippet is readable/selectable without
+  // JS; the button just removes a step for sighted mouse users.
+  (function () {
+    const btn = document.getElementById('copy-btn');
+    const snippet = document.getElementById('install-snippet');
+    if (!btn || !snippet || !navigator.clipboard) return;
+
+    // Grab the command text (strip the $ prompt and the button's own text).
+    const cmd = snippet.childNodes[1].textContent.trim();
+
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(cmd);
+        btn.classList.add('copied');
+        const original = btn.innerHTML;
+        btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10l4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        setTimeout(() => {
+          btn.classList.remove('copied');
+          btn.innerHTML = original;
+        }, 1800);
+      } catch (err) {
+        // Clipboard API can fail on http:// or in sandboxed iframes;
+        // fall back to selecting the text so the user can Cmd/Ctrl+C.
+        const range = document.createRange();
+        range.selectNodeContents(snippet);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
+    });
+  })();
+</script>
+
+</body>
+</html>
