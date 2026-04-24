@@ -1,0 +1,85 @@
+{
+  // ─────────────────────────────────────────────────────────────────────
+  // Codespace recipe: a desktop Linux session in the browser, wired up
+  // so the Tauri .AppImage (or a fresh `tauri:dev` run) has everything
+  // it needs — GTK, WebKit, GL, audio — and you can see the window.
+  //
+  // How it works:
+  //   • `image` is Ubuntu 22.04, matching the runner that CI uses to
+  //     build the .AppImage / .deb. Same libc, same webkit2gtk version,
+  //     so binaries produced by CI will run here without surprises.
+  //   • Codespaces' built-in `desktop-lite` feature adds XFCE + TigerVNC
+  //     + noVNC, exposing a browser-accessible desktop on port 6080.
+  //   • `postCreateCommand` installs the Tauri runtime deps so both
+  //     "download the AppImage" and "run tauri dev from source" work.
+  //
+  // Open this Codespace via GitHub → Code → Codespaces → Create. Once
+  // it's up, look at the "Ports" tab in the VS Code terminal area; the
+  // 6080 port will have a small globe icon — click it to open the
+  // desktop in a browser tab. Password is `vscode` (set below).
+  //
+  // First boot takes ~3 min (image pull + deps). Subsequent boots are
+  // a few seconds.
+  // ─────────────────────────────────────────────────────────────────────
+  "name": "KTurtle — Linux desktop test session",
+
+  // Ubuntu 22.04 — same OS our CI Linux builds target.
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-22.04",
+
+  "features": {
+    // Desktop + VNC + noVNC bundled. 1440×900 fits most laptop screens;
+    // bump if you want more room. Password is what you'll type at the
+    // noVNC login screen.
+    "ghcr.io/devcontainers/features/desktop-lite:1": {
+      "password": "vscode",
+      "webPort": "6080",
+      "vncPort": "5901"
+    },
+    // Node for building/running the app from source if you want to
+    // `npm run tauri:dev` inside the Codespace.
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    // Rust toolchain for the same reason. Cached in the container
+    // image so it doesn't re-download every time.
+    "ghcr.io/devcontainers/features/rust:1": {
+      "version": "stable"
+    }
+  },
+
+  // Surface the noVNC port by default so the "Ports" tab shows it as
+  // soon as the Codespace boots.
+  "forwardPorts": [6080],
+  "portsAttributes": {
+    "6080": {
+      "label": "Desktop (noVNC)",
+      "onAutoForward": "openBrowserOnce"
+    }
+  },
+
+  // Tauri 2 on Ubuntu 22.04 needs webkit2gtk-4.1 (not 4.0) and the
+  // ayatana app-indicator headers. The -bin suffix on ayatana pulls the
+  // runtime lib that .AppImages expect; without it the binary starts
+  // but the window never appears.
+  //
+  // libfuse2 is what AppImages use to mount themselves; Ubuntu 22.04
+  // doesn't ship it by default.
+  "postCreateCommand": "sudo apt-get update && sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-0 libayatana-appindicator3-1 librsvg2-2 libfuse2 libgtk-3-0 libglib2.0-0 libsoup-3.0-0 xdg-utils && echo '✓ Tauri runtime deps installed. Open the 6080 port to see the desktop.'",
+
+  // Preinstall a couple of VS Code extensions that make the Linux
+  // session usable (Rust analyzer for the Tauri side, Tailwind for the
+  // React side). Skip if you prefer a lean editor.
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "bradlc.vscode-tailwindcss",
+        "dbaeumer.vscode-eslint"
+      ]
+    }
+  },
+
+  // Run as the default `vscode` user — matches the desktop-lite feature's
+  // expectations and avoids needing sudo for every VNC action.
+  "remoteUser": "vscode"
+}
