@@ -40,7 +40,14 @@ if [[ -z "${APPIMAGE}" ]]; then
   # Pull every .AppImage from the newest v* release into ./builds/.
   mkdir -p builds
   gh release download --pattern '*.AppImage' --dir builds/ || {
-    echo "  ✗ gh release download failed. Are you authenticated? Try 'gh auth login'."
+    echo "  ✗ gh release download failed."
+    echo "    Common causes:"
+    echo "      • No releases yet on this repo (push a v* tag to create one)."
+    echo "      • Not authenticated. Run 'gh auth login' or 'gh auth status'."
+    echo "      • The latest release has no *.AppImage asset."
+    echo "    Alternative: build locally with"
+    echo "      npm ci && npm run tauri:build -- --bundles appimage"
+    echo "      cp src-tauri/target/release/bundle/appimage/*.AppImage builds/"
     exit 1
   }
   APPIMAGE="$(find_local)"

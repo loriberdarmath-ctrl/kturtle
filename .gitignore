@@ -81,3 +81,6 @@ save-output-server.mjs
 skillforthisprojectuse.md
 vecteezy_*.svg
 .agent/
+
+.vercel
+.env*.local

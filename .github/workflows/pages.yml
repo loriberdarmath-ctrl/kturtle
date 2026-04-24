@@ -1,0 +1,62 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Landing-page deploy — publishes docs/ to GitHub Pages.
+#
+# What this does:
+#   • On every push to main that touches docs/ (or this workflow itself),
+#     uploads docs/ as a Pages artifact and deploys it.
+#   • Also exposed as a manual trigger (workflow_dispatch) for when you want
+#     to re-publish without an underlying change.
+#
+# Why docs/ and not the React build:
+#   The landing page is a standalone static HTML file. The React app (KTurtle
+#   itself) is shipped as desktop/Android binaries via release.yml, or run in
+#   dev with `npm run dev`. Keeping the two deploys separate means a cosmetic
+#   change to the landing page doesn't require rebuilding the whole React
+#   app — and a bad React build can't break the landing page.
+#
+# First-time setup in the GitHub UI:
+#   Settings → Pages → Build and deployment → Source = "GitHub Actions".
+#   Do this once; the workflow handles everything after that.
+# ─────────────────────────────────────────────────────────────────────────────
+name: Deploy landing page
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+# Permissions required by actions/deploy-pages. `pages: write` is the deploy,
+# `id-token: write` lets the OIDC token authenticate the upload.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Only one Pages deploy at a time; cancel superseded runs so the live site
+# always reflects the newest push.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # Upload the docs/ directory verbatim. No build step — the landing
+      # page is hand-written HTML/CSS, zero dependencies.
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
