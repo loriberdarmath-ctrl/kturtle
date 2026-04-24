@@ -885,17 +885,35 @@
         <!--
           Live sample of TurtleScript. Hand-tokenised so we don't pull a
           syntax highlighter (would double the page weight). Colours match
-          the design system.
+          the design system. Chose a small recursive fractal because it
+          shows off what the language is actually good for — self-similar
+          drawings produced by a handful of commands — rather than a
+          five-line toy example.
         -->
-        <pre class="sample" aria-label="Sample KTurtle program"><span class="cm"># draw a star</span>
+        <pre class="sample" aria-label="Sample KTurtle program"><span class="cm"># Tree — a recursive fractal tree</span>
+
 <span class="kw">reset</span>
-<span class="kw">repeat</span> <span class="num">5</span> [
-  <span class="kw">forward</span> <span class="num">150</span>
-  <span class="kw">turnright</span> <span class="num">144</span>
-]
-<span class="kw">penup</span>
-<span class="kw">forward</span> <span class="num">60</span>
-<span class="kw">print</span> <span style="color:#e8a87c;">"hello!"</span></pre>
+<span class="kw">canvassize</span> <span class="num">500</span>, <span class="num">500</span>
+<span class="kw">go</span> <span class="num">250</span>, <span class="num">480</span>
+<span class="kw">direction</span> <span class="num">0</span>
+<span class="kw">penwidth</span> <span class="num">2</span>
+<span class="kw">pencolor</span> <span class="num">95</span>, <span class="num">122</span>, <span class="num">90</span>
+
+<span class="kw">learn</span> branch $length {
+  <span class="kw">if</span> $length &lt; <span class="num">6</span> {
+    <span class="kw">return</span> <span class="num">0</span>
+  }
+  <span class="kw">forward</span> $length
+  <span class="kw">turnleft</span> <span class="num">25</span>
+  branch $length * <span class="num">0.72</span>
+  <span class="kw">turnright</span> <span class="num">50</span>
+  branch $length * <span class="num">0.72</span>
+  <span class="kw">turnleft</span> <span class="num">25</span>
+  <span class="kw">backward</span> $length
+  <span class="kw">return</span> <span class="num">0</span>
+}
+
+branch <span class="num">100</span></pre>
       </div>
     </section>
 
