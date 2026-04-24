@@ -8,7 +8,7 @@ import { Popover } from './components/Popover';
 import { OpenFileDialog } from './components/OpenFileDialog';
 import { remember as rememberRecent } from './utils/recentFiles';
 import { drawingsToSvg } from './utils/exportSvg';
-import { saveTurtleFile, openTurtleFile, exportSvgFile, exportPngFile } from './utils/nativeIO';
+import { saveTurtleFile, exportSvgFile, exportPngFile } from './utils/nativeIO';
 import { toKTurtleFile } from './interpreter/ktFileFormat';
 import { tokenize } from './interpreter/tokenizer';
 import { Parser } from './interpreter/parser';
@@ -189,6 +189,20 @@ export function App() {
     }
     if (l !== null) {
       editorRef.current?.setExecutingLineImperative(l);
+    }
+
+    // Inspector's "Turtle" panel shows position / heading / pen / canvas /
+    // visibility — users expect those to track the turtle as it moves.
+    // Push the snapshot into React state so `InspectorPane` (memo'd on
+    // its scalar props) re-renders at most once per animation frame.
+    //
+    // Gated by `liveVarsDuringRunRef` for the same reason variables are:
+    // at instant speed (0ms / step) a 10k-command program would otherwise
+    // force App to re-render 60 times a second for a status that the eye
+    // can't resolve anyway. The post-run `setTurtle(result.turtle)` at the
+    // end of `runCode` still guarantees the final state is correct.
+    if (s && liveVarsDuringRunRef.current) {
+      setTurtle(s);
     }
 
     // Errors: slice only when the version moved. These genuinely need
@@ -945,8 +959,27 @@ export function App() {
               </a>
             </span>
           </div>
-          <div className="italic hidden lg:block" style={{ fontFamily: 'var(--font-serif)' }}>
-            {t('footer.quote')}
+          <div className="flex items-center gap-3 text-ink-400">
+            <span
+              className="italic hidden lg:inline"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              {t('footer.quote')}
+            </span>
+            <span className="text-ink-300 hidden lg:inline">·</span>
+            {/*
+              Author credit. Uses the serif display face to match the
+              quote so the two sit as a single typographic unit, and a
+              lighter ink tone so it reads as a signature rather than UI
+              chrome. Visible on every breakpoint — on narrow screens
+              it's the only right-hand element.
+            */}
+            <span
+              className="italic whitespace-nowrap"
+              style={{ fontFamily: 'var(--font-serif)' }}
+            >
+              {t('footer.author')}
+            </span>
           </div>
         </div>
         {showReference && (
