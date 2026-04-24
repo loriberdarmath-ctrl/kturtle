@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Main window capability. Enables native Save/Open dialogs and filesystem writes so the app can offer a real desktop Save As / Open flow for .turtle, .png and .svg files.",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "dialog:allow-save",
+    "dialog:allow-open",
+    "fs:default",
+    "fs:allow-write-file",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file"
+  ]
+}

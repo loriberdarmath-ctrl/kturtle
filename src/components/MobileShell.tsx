@@ -7,9 +7,9 @@ import { TurtleCanvas, TurtleCanvasHandle } from './TurtleCanvas';
 import { InspectorPane, InspectorTab } from './InspectorPane';
 import { ColorPicker } from './ColorPicker';
 import { OpenFileDialog } from './OpenFileDialog';
-import { SVGConverter } from './SVGConverter';
 import { useT } from '../i18n/context';
 import { examples } from '../examples';
+import { exportPngFile } from '../utils/nativeIO';
 
 /**
  * Single prop-bundle so App.tsx only has to hand over one object.
@@ -60,13 +60,11 @@ export interface MobileShellApp {
   setShowOpenDialog: (v: boolean) => void;
   setShowExportModal: (v: boolean) => void;
   setExportedImage: (s: string | null) => void;
-  setShowConverterModal: (v: boolean) => void;
   handleFilePicked: (name: string, code: string) => void;
   exportedImage: string | null;
   showExportModal: boolean;
   showColorPicker: boolean;
   showOpenDialog: boolean;
-  showConverterModal: boolean;
 }
 
 /**
@@ -102,9 +100,9 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
     showMobileMore, setShowMobileMore,
     canvasZoomDisplay, setCanvasZoomDisplay,
     setShowColorPicker, setShowOpenDialog,
-    setShowExportModal, setExportedImage, setShowConverterModal,
+    setShowExportModal, setExportedImage,
     handleFilePicked,
-    showColorPicker, showOpenDialog, showConverterModal,
+    showColorPicker, showOpenDialog,
     exportedImage, showExportModal,
   } = app;
 
@@ -274,11 +272,6 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
             />
 
             <SheetAction
-              icon={<IconSparkles />}
-              label={t('toolbar.svgToCode')}
-              onClick={() => { setShowConverterModal(true); setShowMobileMore(false); }}
-            />
-            <SheetAction
               icon={<IconGlobe />}
               label={locale.toUpperCase()}
               onClick={() => { setShowLangSheet(true); setShowMobileMore(false); }}
@@ -355,18 +348,9 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
       {showExportModal && exportedImage && (
         <MobilePngExport
           image={exportedImage}
+          fileName={fileName}
           t={t}
           onClose={() => setShowExportModal(false)}
-        />
-      )}
-
-      {showConverterModal && (
-        <SVGConverter
-          onClose={() => setShowConverterModal(false)}
-          onGenerateCode={generatedCode => {
-            setCode(generatedCode);
-            setMobileView('code');
-          }}
         />
       )}
 
@@ -466,7 +450,13 @@ function MobileTopBar({
   );
 }
 
-function MobileRunBar({
+/**
+ * Mobile run bar — memoised so it doesn't re-render when the parent
+ * re-renders for unrelated reasons (keystrokes in the editor,
+ * interpreter frame commits, etc). This is the row the user
+ * drags while a program is running, so its idle cost matters.
+ */
+const MobileRunBar = memo(function MobileRunBar({
   t,
   isRunning,
   runCode,
@@ -537,26 +527,13 @@ function MobileRunBar({
           )}
         </button>
 
-        {/* Speed dial — a native range is the right control for touch
-            (OS gives proper thumb size + accessibility). */}
-        <label className="flex-1 min-w-0 inline-flex items-center gap-2 h-11 px-3 rounded-full border border-line bg-paper-soft">
-          <svg className="w-3.5 h-3.5 text-ink-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-          </svg>
-          <input
-            type="range"
-            min={0}
-            max={speedStepsLen - 1}
-            step={1}
-            value={speedIdx}
-            onChange={e => setSpeedIdx(Number(e.target.value))}
-            className="flex-1 min-w-0 accent-accent"
-            aria-label={t('toolbar.speed')}
-          />
-          <span className="text-[11px] font-mono tab-nums text-ink-700 text-right flex-shrink-0 truncate max-w-[70px]">
-            {speedLabel}
-          </span>
-        </label>
+        <MobileSpeedDial
+          t={t}
+          speedIdx={speedIdx}
+          setSpeedIdx={setSpeedIdx}
+          speedLabel={speedLabel}
+          speedStepsLen={speedStepsLen}
+        />
 
         <button
           type="button"
@@ -573,7 +550,97 @@ function MobileRunBar({
       </div>
     </div>
   );
-}
+});
+
+/**
+ * Speed slider with **local** thumb state.
+ *
+ * The parent `speedIdx` changes trigger a full MobileShell re-render
+ * (it owns the same state used elsewhere); on phones that re-render
+ * cascade used to run 60×/sec while dragging the slider, which
+ * janked the thumb tracking.
+ *
+ * Fix: keep the thumb position in a local useState, mirror the parent
+ * prop when it changes externally, and commit *at most once per
+ * animation frame* to the parent via requestAnimationFrame. The
+ * interpreter still sees every committed value (it polls speed on
+ * every step), so programs responding to the slider continue to feel
+ * live — just without the jank.
+ */
+const MobileSpeedDial = memo(function MobileSpeedDial({
+  t,
+  speedIdx,
+  setSpeedIdx,
+  speedLabel,
+  speedStepsLen,
+}: {
+  t: (k: string, ...a: (string | number)[]) => string;
+  speedIdx: number;
+  setSpeedIdx: (n: number) => void;
+  speedLabel: string;
+  speedStepsLen: number;
+}) {
+  const [localIdx, setLocalIdx] = useState(speedIdx);
+  // Mirror outside changes (e.g. resetting on a new run) into the
+  // local thumb. Bail when the values already match to avoid
+  // thrashing mid-drag.
+  useEffect(() => {
+    setLocalIdx(prev => (prev === speedIdx ? prev : speedIdx));
+  }, [speedIdx]);
+
+  const rafRef = useRef<number | null>(null);
+  const pendingRef = useRef<number>(speedIdx);
+  useEffect(() => () => {
+    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+  }, []);
+
+  const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const n = Number(e.target.value);
+    setLocalIdx(n);
+    pendingRef.current = n;
+    if (rafRef.current === null) {
+      rafRef.current = requestAnimationFrame(() => {
+        rafRef.current = null;
+        setSpeedIdx(pendingRef.current);
+      });
+    }
+  };
+
+  // Commit immediately on release so the interpreter gets the final
+  // value even if the user let go mid-rAF.
+  const commitNow = () => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (pendingRef.current !== speedIdx) setSpeedIdx(pendingRef.current);
+  };
+
+  return (
+    <label className="flex-1 min-w-0 inline-flex items-center gap-2 h-11 px-3 rounded-full border border-line bg-paper-soft">
+      <svg className="w-3.5 h-3.5 text-ink-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+      <input
+        type="range"
+        min={0}
+        max={speedStepsLen - 1}
+        step={1}
+        value={localIdx}
+        onChange={onChange}
+        onPointerUp={commitNow}
+        onPointerCancel={commitNow}
+        onKeyUp={commitNow}
+        className="flex-1 min-w-0 accent-accent touch-none"
+        style={{ touchAction: 'none' }}
+        aria-label={t('toolbar.speed')}
+      />
+      <span className="text-[11px] font-mono tab-nums text-ink-700 text-right flex-shrink-0 truncate max-w-[70px]">
+        {speedLabel}
+      </span>
+    </label>
+  );
+});
 
 function TabButton({
   icon,
@@ -805,13 +872,27 @@ function SheetAction({
 
 function MobilePngExport({
   image,
+  fileName,
   t,
   onClose,
 }: {
   image: string;
+  fileName: string;
   t: (k: string, ...a: (string | number)[]) => string;
   onClose: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
+    try {
+      const base = fileName.replace(/\.(turtle|logo|txt)$/i, '') || 'kturtle-drawing';
+      await exportPngFile(image, `${base}.png`);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
+  };
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col bg-white anim-fade"
@@ -838,13 +919,17 @@ function MobilePngExport({
         <img src={image} alt="Exported canvas" className="max-w-full max-h-full rounded-lg shadow" />
       </div>
       <div className="px-4 py-3 border-t border-line flex-shrink-0">
-        <a
-          href={image}
-          download="kturtle-drawing.png"
-          className="touch-target w-full inline-flex items-center justify-center px-4 h-12 bg-ink-900 text-paper rounded-full text-[14px] font-medium active:bg-accent transition-colors"
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="touch-target w-full inline-flex items-center justify-center gap-2 px-4 h-12 bg-ink-900 text-paper rounded-full text-[14px] font-medium active:bg-accent transition-colors disabled:opacity-60"
         >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5 5-5M12 15V3" />
+          </svg>
           {t('toolbar.file.exportPng')}
-        </a>
+        </button>
       </div>
     </div>
   );
@@ -942,13 +1027,6 @@ function IconSvg() {
     <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} className="w-5 h-5">
       <path strokeLinecap="round" strokeLinejoin="round" d="M5 7l2 10h10l2-10H5z" />
       <path strokeLinecap="round" strokeLinejoin="round" d="M9 11l3 3 3-3" />
-    </svg>
-  );
-}
-function IconSparkles() {
-  return (
-    <svg fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} className="w-5 h-5">
-      <path strokeLinecap="round" strokeLinejoin="round" d="M9 4l1.5 4L14 9l-3.5 1L9 14l-1.5-4L4 9l3.5-1L9 4zM18 12l.9 2.4L21 15l-2.1.6L18 18l-.9-2.4L15 15l2.1-.6L18 12z" />
     </svg>
   );
 }

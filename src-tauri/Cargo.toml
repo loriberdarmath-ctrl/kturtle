@@ -1,0 +1,46 @@
+[package]
+name = "kturtle"
+# Keep the Rust crate version aligned with the app version in
+# tauri.conf.json (this one is the on-disk binary metadata).
+version = "0.1.0"
+description = "KTurtle — a quiet place to draw with code"
+authors = ["KTurtle contributors"]
+edition = "2021"
+# MSRV kept in sync with the Tauri 2 docs. Rust 1.77 is the floor.
+rust-version = "1.77"
+
+# The library target is what tauri-build wires into the WebView shell.
+# The binary `kturtle` is what `tauri build` produces for Windows + Linux.
+[lib]
+name = "kturtle_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[[bin]]
+name = "kturtle"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# Default features give us window management + tray + menu APIs.
+# We add dialog + fs plugins so Save/Open/Export can use real native
+# file pickers instead of browser <a download> fallbacks on desktop.
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Release profile trims the installer ~30% by:
+#   - full LTO (link-time optimisation across Rust crates)
+#   - codegen-units=1 lets LLVM inline more aggressively
+#   - strip debug symbols (we don't ship sourcemaps anyway)
+#   - opt-level='s' favours size over raw speed; the heavy lifting
+#     happens in the webview, not Rust, so this is pure win.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

@@ -3,6 +3,7 @@ import { useT } from '../i18n/context';
 import { examples } from '../examples';
 import { list as listRecent, remove as removeRecent, clear as clearRecent, RecentFile } from '../utils/recentFiles';
 import { fromKTurtleFile } from '../interpreter/ktFileFormat';
+import { openTurtleFile } from '../utils/nativeIO';
 
 /**
  * KTurtle-style Open dialog. Three tabs:
@@ -83,25 +84,14 @@ export function OpenFileDialog({ open, onClose, onPick }: OpenFileDialogProps) {
     return items.filter(i => i.name.toLowerCase().includes(q) || i.code.toLowerCase().includes(q));
   }, [items, query]);
 
-  const handlePickFromComputer = useCallback(() => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.turtle,.logo,.txt,text/plain';
-    input.onchange = () => {
-      const file = input.files?.[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = () => {
-        // Auto-detect: fromKTurtleFile() strips the magic header +
-        // @(english) wrappers if present, or returns the text unchanged
-        // for hand-edited plain-text programs and legacy files.
-        const raw = String(reader.result || '');
-        onPick(file.name, fromKTurtleFile(raw));
-        onClose();
-      };
-      reader.readAsText(file);
-    };
-    input.click();
+  const handlePickFromComputer = useCallback(async () => {
+    // On Tauri this opens a real native "Open file" dialog; on
+    // Capacitor + web it uses a hidden <input type="file"> because
+    // neither ships a native document picker we can use directly.
+    const picked = await openTurtleFile();
+    if (!picked) return;
+    onPick(picked.name, fromKTurtleFile(picked.content));
+    onClose();
   }, [onClose, onPick]);
 
   const selectedItem = useMemo(() => filtered.find(i => i.id === selected), [filtered, selected]);

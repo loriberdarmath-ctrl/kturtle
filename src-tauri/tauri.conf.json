@@ -1,0 +1,58 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "KTurtle",
+  "version": "0.1.0",
+  "identifier": "com.kturtle.app",
+  "build": {
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist-native",
+    "beforeDevCommand": "npm run dev:native",
+    "beforeBuildCommand": "npm run build:native"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "KTurtle",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 760,
+        "minHeight": 520,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "center": true,
+        "backgroundColor": "#faf8f4"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self' asset: tauri: data:; script-src 'self' asset: tauri: 'unsafe-inline'; style-src 'self' asset: tauri: 'unsafe-inline'; img-src 'self' asset: tauri: data: blob:; font-src 'self' asset: tauri: data:; connect-src 'self' asset: tauri:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ],
+    "category": "Education",
+    "copyright": "KTurtle contributors",
+    "shortDescription": "A quiet place to draw with code.",
+    "longDescription": "KTurtle is a programming environment for learning how to program. Syntax-highlighted TurtleScript editor, integrated canvas, debugger, and context-sensitive help — all running fully offline in a native window.",
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["English"]
+      }
+    }
+  }
+}
