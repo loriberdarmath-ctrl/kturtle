@@ -41,5 +41,18 @@ cp -r docs/. dist/about/
 # 4. Expose the Linux installer at /_install.sh (pretty curl URL)
 cp scripts/install-linux.sh dist/_install.sh
 
+# 5. Mirror the logo at the dist root.
+#
+#    The app's index.html references the logo with a relative path
+#    (`href="kturtle-logo.svg"`) so the same HTML works in the native
+#    shells (file://, android-asset://) where absolute paths would hit
+#    the device root. On Vercel, visiting /app (no trailing slash) makes
+#    the browser resolve the relative reference against /, producing a
+#    request for /kturtle-logo.svg. Without this copy that 404s, and the
+#    tab favicon + in-app references break.
+#
+#    Also mirror the site favicon so it works on the landing page root.
+cp dist/app/kturtle-logo.svg dist/kturtle-logo.svg
+
 echo "dist/ tree:"
 ls -la dist/
