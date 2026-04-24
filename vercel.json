@@ -1,19 +1,21 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
 
-  "buildCommand": "npm run build && mkdir -p dist/about && cp -r docs/. dist/about/ && cp scripts/install-linux.sh dist/_install.sh",
+  "//why-this-buildCommand": "We restructure the output so no file sits at dist/index.html. That matters because Vercel's static-file resolver runs BEFORE rewrites — if /index.html exists, it wins, and the / -> /about rewrite never fires. By moving the app into dist/app/ and the landing into dist/about/, the root `/` has nothing to serve statically and the rewrite takes over.",
+
+  "buildCommand": "npm run build && mkdir -p dist/app && mv dist/index.html dist/app/index.html && if [ -d dist/fonts ]; then mv dist/fonts dist/app/fonts; fi && if [ -f dist/kturtle-logo.svg ]; then mv dist/kturtle-logo.svg dist/app/kturtle-logo.svg; fi && mkdir -p dist/about && cp -r docs/. dist/about/ && cp scripts/install-linux.sh dist/_install.sh",
   "outputDirectory": "dist",
   "framework": null,
   "trailingSlash": false,
 
   "rewrites": [
     { "source": "/",    "destination": "/about/index.html" },
-    { "source": "/app", "destination": "/index.html" }
+    { "source": "/app", "destination": "/app/index.html" }
   ],
 
   "headers": [
     {
-      "source": "/app",
+      "source": "/app/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=0, must-revalidate" }
       ]
