@@ -124,15 +124,22 @@ export function OpenFileDialog({ open, onClose, onPick }: OpenFileDialogProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-ink-900/30 backdrop-blur-sm anim-fade overflow-y-auto"
+      className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center p-0 sm:p-4 bg-ink-900/30 backdrop-blur-sm anim-fade overflow-hidden"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={t('file.open.title')}
+      style={{ paddingTop: 'env(safe-area-inset-top)' }}
     >
+      {/*
+        On phones the dialog takes the whole viewport (cleaner than a
+        cramped centered modal); on tablets/desktop it's a proper dialog
+        with a max width.
+      */}
       <div
-        className="surface w-full max-w-[820px] anim-rise flex flex-col max-h-[calc(100vh-1.5rem)] sm:max-h-[min(90vh,680px)] my-auto overflow-hidden"
+        className="surface w-full max-w-[820px] anim-sheet sm:anim-rise flex flex-col max-h-[var(--app-vh)] sm:max-h-[min(90vh,680px)] my-0 sm:my-auto overflow-hidden rounded-none sm:rounded-[14px] border-0 sm:border"
         onClick={e => e.stopPropagation()}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-3 border-b border-line flex-shrink-0">
@@ -155,10 +162,15 @@ export function OpenFileDialog({ open, onClose, onPick }: OpenFileDialogProps) {
           </button>
         </div>
 
-        {/* Body: sidebar tabs + list + preview */}
-        <div className="flex-1 min-h-0 grid grid-cols-[160px_1fr_1fr] sm:grid-cols-[200px_1.3fr_1fr]">
-          {/* Sidebar with tabs */}
-          <aside className="border-r border-line bg-paper-soft/40 py-2 flex flex-col">
+        {/* Body: sidebar tabs + list + preview.
+            Mobile  (<640px) : tab pills row at top, list fills the rest,
+                               preview hidden (tap a row to open directly).
+            Tablet  (≥640)   : keep the 2-column layout (tabs | list), preview hidden.
+            Desktop (≥768)   : full 3-column layout with preview pane.
+         */}
+        <div className="flex-1 min-h-0 flex flex-col sm:grid sm:grid-cols-[200px_1fr] md:grid-cols-[200px_1.3fr_1fr]">
+          {/* Sidebar — pills on mobile, stacked sidebar on sm+ */}
+          <aside className="sm:border-r sm:border-line sm:bg-paper-soft/40 py-2 flex flex-row sm:flex-col gap-1 sm:gap-0 px-3 sm:px-0 flex-shrink-0 border-b sm:border-b-0 border-line overflow-x-auto sm:overflow-visible toolbar-scroll">
             <SidebarTab
               label={t('file.open.tab.recent')}
               active={tab === 'recent'}
@@ -269,16 +281,32 @@ export function OpenFileDialog({ open, onClose, onPick }: OpenFileDialogProps) {
                           type="button"
                           role="option"
                           aria-selected={isSel}
-                          onClick={() => setSelected(item.id)}
+                          onClick={() => {
+                            // On desktop (md+) clicking selects for preview;
+                            // on mobile (preview hidden) there's no second
+                            // step, so click = open immediately. matchMedia
+                            // rather than a JS breakpoint so this works
+                            // even in an SSR-hydrated shell.
+                            const isCompact =
+                              typeof window !== 'undefined' &&
+                              window.matchMedia &&
+                              window.matchMedia('(max-width: 767px)').matches;
+                            if (isCompact) {
+                              onPick(item.name, item.code);
+                              onClose();
+                            } else {
+                              setSelected(item.id);
+                            }
+                          }}
                           onDoubleClick={() => {
                             setSelected(item.id);
                             onPick(item.name, item.code);
                             onClose();
                           }}
-                          className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-start gap-2.5 group ${
+                          className={`touch-target w-full text-left px-3 py-3 sm:py-2 rounded-md transition-colors flex items-start gap-2.5 group ${
                             isSel
                               ? 'bg-accent-wash/70 text-ink-900'
-                              : 'hover:bg-paper-soft text-ink-800'
+                              : 'hover:bg-paper-soft active:bg-paper-soft text-ink-800'
                           }`}
                         >
                           <FileIcon kind={item.kind} />
@@ -321,8 +349,10 @@ export function OpenFileDialog({ open, onClose, onPick }: OpenFileDialogProps) {
             </div>
           </div>
 
-          {/* Right: preview */}
-          <div className="flex flex-col min-w-0 bg-paper-soft/30">
+          {/* Right: preview — hidden below the md breakpoint. On phones the
+              list entries are direct-pick (tap to open), so a preview pane
+              would just eat half the viewport for no reason. */}
+          <div className="hidden md:flex flex-col min-w-0 bg-paper-soft/30">
             {selectedItem ? (
               <>
                 <div className="px-4 py-2.5 border-b border-line flex-shrink-0">
@@ -402,16 +432,21 @@ function SidebarTab({
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center gap-2.5 px-4 py-2 text-left text-[12.5px] transition-colors ${
+      className={[
+        // Mobile: rounded pill, horizontal scroll. No left-border accent.
+        'flex-shrink-0 inline-flex sm:flex items-center gap-2',
+        'rounded-full sm:rounded-none',
+        'px-3 py-1.5 sm:px-4 sm:py-2 text-left text-[12.5px] transition-colors',
+        // Desktop: current "sidebar-tab" look with left accent stripe
         active
-          ? 'bg-white text-ink-900 font-medium border-l-2 border-accent -ml-px pl-[15px]'
-          : 'text-ink-700 hover:bg-white/60 hover:text-ink-900'
-      }`}
+          ? 'bg-accent-wash/60 sm:bg-white text-ink-900 font-medium sm:border-l-2 sm:border-accent sm:-ml-px sm:pl-[15px]'
+          : 'bg-paper-soft sm:bg-transparent text-ink-700 hover:bg-white/60 hover:text-ink-900',
+      ].join(' ')}
     >
       <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
         {icon}
       </svg>
-      <span className="flex-1 truncate">{label}</span>
+      <span className="truncate sm:flex-1">{label}</span>
       {count !== undefined && count > 0 && (
         <span className={`text-[10.5px] font-mono tab-nums ${active ? 'text-accent' : 'text-ink-400'}`}>
           {count}

@@ -28,7 +28,11 @@ export interface Token {
   column: number;
 }
 
-const COMMANDS = [
+// Sets give O(1) membership lookups; arrays would be O(n) per identifier.
+// On long programs the tokenizer is called repeatedly (every run + every
+// open-file), and each COMMANDS.has vs COMMANDS.includes saves ~60 string
+// comparisons per identifier.
+const COMMANDS = new Set([
   'forward', 'fw', 'backward', 'bw', 'turnleft', 'tl', 'turnright', 'tr',
   'direction', 'dir', 'center', 'go', 'gox', 'goy', 'getx', 'gety',
   'penup', 'pu', 'pendown', 'pd', 'penwidth', 'pw', 'pencolor', 'pc',
@@ -36,11 +40,11 @@ const COMMANDS = [
   'spriteshow', 'ss', 'spritehide', 'sh', 'print', 'fontsize',
   'random', 'rnd', 'message', 'ask', 'wait',
   'sin', 'cos', 'tan', 'arcsin', 'arccos', 'arctan', 'sqrt', 'exp', 'pi',
-  'round', 'abs'
-];
+  'round', 'abs',
+]);
 
-const KEYWORDS = ['if', 'else', 'while', 'repeat', 'for', 'to', 'step', 'learn', 'return', 'exit'];
-const LOGICAL = ['and', 'or', 'not'];
+const KEYWORDS = new Set(['if', 'else', 'while', 'repeat', 'for', 'to', 'step', 'learn', 'return', 'exit']);
+const LOGICAL = new Set(['and', 'or', 'not']);
 
 export function tokenize(code: string): Token[] {
   const tokens: Token[] = [];
@@ -163,11 +167,11 @@ export function tokenize(code: string): Token[] {
         column++;
       }
       const lower = id.toLowerCase();
-      if (COMMANDS.includes(lower)) {
+      if (COMMANDS.has(lower)) {
         tokens.push({ type: 'COMMAND', value: lower, line, column: startCol });
-      } else if (KEYWORDS.includes(lower)) {
+      } else if (KEYWORDS.has(lower)) {
         tokens.push({ type: 'KEYWORD', value: lower, line, column: startCol });
-      } else if (LOGICAL.includes(lower)) {
+      } else if (LOGICAL.has(lower)) {
         tokens.push({ type: 'LOGICAL', value: lower, line, column: startCol });
       } else {
         tokens.push({ type: 'IDENTIFIER', value: id, line, column: startCol });

@@ -13,7 +13,19 @@ import { TurtleState, DrawCommand } from '../interpreter/interpreter';
 
 interface TurtleCanvasProps {
   turtle: TurtleState;
+  /**
+   * The interpreter's draw-commands array. May contain more items than
+   * `drawingsLen` — we only render up to `drawingsLen`. Passing the live
+   * reference (instead of slicing on every frame) is what keeps big
+   * programs smooth: an O(n) slice per rAF was the dominant cost before.
+   */
   drawings: DrawCommand[];
+  /**
+   * Committed length of `drawings` for this render. When omitted we fall
+   * back to the full array length — preserves the earlier API for any
+   * caller that hasn't adopted the two-prop contract.
+   */
+  drawingsLen?: number;
   /**
    * External, UI-driven zoom (0.5..N). This multiplies the user's internal
    * wheel zoom — the canvas computes an effective zoom from both.
@@ -30,90 +42,100 @@ export interface TurtleCanvasHandle {
   zoomIn: () => void;
   zoomOut: () => void;
   getZoom: () => number;
+  /**
+   * Imperative per-frame update used by the interpreter rAF loop.
+   *
+   * The React-state path (props → effect → draw) is intentionally
+   * bypassed during a run. Going through `setTurtle` / `setDrawings`
+   * forces App.tsx to re-render its entire subtree (header, editor,
+   * inspector) at 60Hz — on a long program that dominates the frame
+   * budget even though most of those children are memoized, because
+   * React still has to diff them.
+   *
+   * This method paints directly to the two canvases using the refs
+   * inside the component. It writes no React state, skips memo
+   * comparisons on sibling components, and keeps the internal
+   * "how much did we already draw" counter in sync so that when a
+   * normal prop-driven render eventually happens again (e.g. after
+   * the run ends) it picks up seamlessly.
+   */
+  renderFrame: (turtle: TurtleState, drawings: DrawCommand[], drawingsLen: number) => void;
+  /**
+   * Clear the imperative "live inputs" cache — call after a run has
+   * completed and React props represent the authoritative state again.
+   * Without this, a later user-driven re-paint (zoom, resize) would
+   * mistakenly prefer stale live data over the new props.
+   */
+  endRun: () => void;
 }
 
 // Offscreen turtle sprite (rendered once, reused). The sprite canvas is small
 // (SPRITE_SIZE × SPRITE_SIZE) so per-frame turtle updates only need a clear +
 // drawImage + rotate, not a re-draw of dozens of paths on a huge canvas.
-const SPRITE_SIZE = 48;
+//
+// The sprite is rasterized at DRAW_SIZE but the backing bitmap is 2× that
+// (devicePixelRatio-like oversampling) so the turtle stays crisp when the
+// user zooms in. DRAW_SIZE = 24 matches the final visual size on the canvas;
+// we upload at 48 so we effectively have "@2x" supersampling for free.
+const DRAW_SIZE = 24;
+const SPRITE_SIZE = DRAW_SIZE * 2;
+// URL of the official KTurtle logo asset. import.meta.env.BASE_URL lets the
+// app be served from a subpath (e.g. /kturtle/) without breaking the
+// sprite — same trick used for the header logo.
+const LOGO_URL = `${import.meta.env.BASE_URL}kturtle-logo.svg`;
 
 let spriteCache: HTMLCanvasElement | null = null;
-function getTurtleSprite(): HTMLCanvasElement {
+let spriteLoading = false;
+/** Fires each time a fresh sprite has been rasterized. Components can
+ *  subscribe to repaint themselves once the SVG finishes decoding.  */
+const spriteListeners = new Set<() => void>();
+
+function subscribeSprite(cb: () => void): () => void {
+  spriteListeners.add(cb);
+  return () => spriteListeners.delete(cb);
+}
+
+/**
+ * Returns the cached rasterized turtle sprite, or `null` if it's still
+ * loading. Loading is triggered lazily on the first call.
+ *
+ * The sprite is the official KTurtle logo (File:KTurtle_logo.svg on
+ * Wikimedia Commons, a 256×256 square facing up). We rasterize it to a
+ * 48×48 offscreen canvas so per-frame turtle draws stay a cheap
+ * drawImage + rotate — matching the cost of the hand-drawn sprite this
+ * replaces.
+ */
+function getTurtleSprite(): HTMLCanvasElement | null {
   if (spriteCache) return spriteCache;
-
-  const c = document.createElement('canvas');
-  c.width = SPRITE_SIZE;
-  c.height = SPRITE_SIZE;
-  const ctx = c.getContext('2d')!;
-
-  ctx.translate(SPRITE_SIZE / 2, SPRITE_SIZE / 2);
-  const size = 16;
-
-  // Shell
-  ctx.beginPath();
-  ctx.ellipse(0, 0, size * 0.6, size * 0.8, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#4ade80';
-  ctx.fill();
-  ctx.strokeStyle = '#166534';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  // Shell pattern
-  ctx.beginPath();
-  ctx.moveTo(-size * 0.3, -size * 0.4);
-  ctx.lineTo(0, -size * 0.2);
-  ctx.lineTo(size * 0.3, -size * 0.4);
-  ctx.moveTo(-size * 0.3, size * 0.1);
-  ctx.lineTo(0, size * 0.3);
-  ctx.lineTo(size * 0.3, size * 0.1);
-  ctx.strokeStyle = '#166534';
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  // Head
-  ctx.beginPath();
-  ctx.arc(0, -size, size * 0.35, 0, Math.PI * 2);
-  ctx.fillStyle = '#86efac';
-  ctx.fill();
-  ctx.strokeStyle = '#166534';
-  ctx.lineWidth = 1.5;
-  ctx.stroke();
-
-  // Eyes
-  ctx.beginPath();
-  ctx.arc(-size * 0.12, -size * 1.1, 2, 0, Math.PI * 2);
-  ctx.arc(size * 0.12, -size * 1.1, 2, 0, Math.PI * 2);
-  ctx.fillStyle = '#000';
-  ctx.fill();
-
-  // Legs
-  const legPositions: [number, number][] = [
-    [-size * 0.5, -size * 0.3],
-    [size * 0.5, -size * 0.3],
-    [-size * 0.5, size * 0.3],
-    [size * 0.5, size * 0.3],
-  ];
-  for (const [lx, ly] of legPositions) {
-    ctx.beginPath();
-    ctx.ellipse(lx, ly, size * 0.2, size * 0.15, (lx < 0 ? -1 : 1) * Math.PI / 6, 0, Math.PI * 2);
-    ctx.fillStyle = '#86efac';
-    ctx.fill();
-    ctx.strokeStyle = '#166534';
-    ctx.lineWidth = 1;
-    ctx.stroke();
+  if (!spriteLoading) {
+    spriteLoading = true;
+    const img = new Image();
+    // Works even on file:// and through vite's dev server. No crossOrigin
+    // needed because /public assets are same-origin.
+    img.decoding = 'async';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = SPRITE_SIZE;
+      c.height = SPRITE_SIZE;
+      const ctx = c.getContext('2d');
+      if (!ctx) return;
+      // Rasterize with high-quality smoothing — the SVG has anti-aliased
+      // edges + a gradient fill, so we want subpixel sampling.
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, 0, 0, SPRITE_SIZE, SPRITE_SIZE);
+      spriteCache = c;
+      // Wake up any mounted canvas so it redraws with the real sprite.
+      for (const cb of spriteListeners) cb();
+    };
+    img.onerror = () => {
+      // Fall back silently — if the asset is missing for some reason,
+      // the turtle just won't show; drawings still render fine.
+      spriteLoading = false;
+    };
+    img.src = LOGO_URL;
   }
-
-  // Tail
-  ctx.beginPath();
-  ctx.moveTo(0, size * 0.7);
-  ctx.lineTo(0, size);
-  ctx.strokeStyle = '#86efac';
-  ctx.lineWidth = 3;
-  ctx.lineCap = 'round';
-  ctx.stroke();
-
-  spriteCache = c;
-  return c;
+  return null;
 }
 
 // Render a slice of drawing commands onto a context. Consecutive `line`
@@ -200,11 +222,37 @@ function renderCommands(
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 40;
 
+// How aggressively the backing bitmap follows the visual zoom. The canvas
+// stores its content as a raster: if we only render at logical size and CSS
+// scales it up, zooming in reveals chunky pixels. To stay crisp we match the
+// bitmap size to `effectiveZoom × devicePixelRatio`, capped at RENDER_SCALE_CAP
+// so a user who zooms to 40× doesn't allocate a gigapixel backbuffer.
+//
+// We also bucket the render scale to powers of √2 so a small wheel nudge
+// doesn't trigger a full repaint every frame — a full repaint of a long
+// drawing is what caused the original "laggy on big programs + zoom" feel.
+const RENDER_SCALE_CAP = 8;
+const RENDER_SCALE_MIN = 1;
+function bucketRenderScale(visualScale: number): number {
+  const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+  const target = Math.max(RENDER_SCALE_MIN, Math.min(RENDER_SCALE_CAP, visualScale * dpr));
+  // Bucket to the next power of √2 (≈ 1.414). That's tight enough that a
+  // 2× zoom always finds a higher-fidelity bucket, but loose enough that
+  // continuous pinching doesn't trigger a full repaint on every frame.
+  const step = Math.SQRT2;
+  const bucket = Math.pow(step, Math.ceil(Math.log(target) / Math.log(step)));
+  return Math.max(RENDER_SCALE_MIN, Math.min(RENDER_SCALE_CAP, bucket));
+}
+
 const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
-  ({ turtle, drawings, externalScale = 1, onZoomChange }, ref) => {
+  ({ turtle, drawings, drawingsLen, externalScale = 1, onZoomChange }, ref) => {
+  // Effective command count. When the caller omits `drawingsLen` we fall
+  // back to array length (legacy behaviour). When present, it acts as a
+  // version counter — letting App.tsx commit the same array reference on
+  // every frame without slicing while still triggering a render here.
+  const dLen = drawingsLen ?? drawings.length;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const turtleRef = useRef<HTMLCanvasElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
   // Internal zoom and pan (in viewport pixels). We compose externalScale
@@ -212,13 +260,159 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
 
+  // Bumps once the rasterized turtle sprite is ready. Included in the
+  // sprite-drawing effect's dep list so the very first paint happens as
+  // soon as the SVG asset finishes decoding (typically <50ms on a 3 KB
+  // file). After that the dep stops changing so it adds no overhead.
+  const [spriteTick, setSpriteTick] = useState(0);
+  useEffect(() => {
+    // Kick off the load eagerly; no-op if already cached.
+    getTurtleSprite();
+    return subscribeSprite(() => setSpriteTick(t => t + 1));
+  }, []);
+
   // Incremental draw state
   const drawnCountRef = useRef(0);
   const lastCanvasSizeRef = useRef({ w: 0, h: 0 });
   const lastCanvasColorRef = useRef('');
   const lastDrawingsRef = useRef<DrawCommand[] | null>(null);
+  const lastRenderScaleRef = useRef(1);
+  // Snapshot of the last turtle sprite state we painted. The imperative
+  // `renderFrame` path compares against this to skip redundant sprite
+  // redraws when only the pen color or non-spatial state changed.
+  const lastSpriteRef = useRef({ x: 0, y: 0, angle: 0, visible: false });
+  // Current renderScale kept as a ref so the imperative path can read it
+  // without forcing a React re-render when it changes.
+  const renderScaleRef = useRef(1);
+  /** Latest live inputs from the imperative `renderFrame` path. While a
+   *  run is active the React-state `drawings`/`turtle` props are stale
+   *  (they're reset to empty at run start and only resynced at run end);
+   *  reading them in the prop-driven effect would wipe the canvas. So
+   *  we keep the live copy here and let the effect fall back to it
+   *  when an unrelated dep (zoom/render-scale/canvas size) fires. */
+  const liveInputsRef = useRef<{
+    turtle: TurtleState;
+    drawings: DrawCommand[];
+    drawingsLen: number;
+  } | null>(null);
 
   const effectiveZoom = zoom * externalScale;
+
+  // Bucketed supersampling factor — drives canvas bitmap resolution so
+  // zooming in doesn't pixelate the drawing. Updated only when the bucket
+  // changes (not on every tiny zoom tick), and that bucket change is what
+  // forces the one expensive full repaint; in between, zoom just scales the
+  // already-crisp bitmap via CSS.
+  const [renderScale, setRenderScale] = useState(() => bucketRenderScale(1));
+  useEffect(() => {
+    const target = bucketRenderScale(effectiveZoom);
+    setRenderScale(prev => (prev === target ? prev : target));
+  }, [effectiveZoom]);
+  // Mirror into a ref so the imperative `renderFrame` path can see the
+  // current scale without going through a React commit.
+  useEffect(() => { renderScaleRef.current = renderScale; }, [renderScale]);
+
+  // Core drawing routine — pure function of the current refs + inputs.
+  // Called from both the effect-driven React path and the imperative
+  // per-frame path. Kept as a stable callback so neither caller has to
+  // worry about identity-based re-subscriptions.
+  const paintDrawings = useCallback((
+    turtleState: TurtleState,
+    drawingsArr: DrawCommand[],
+    drawingsLength: number,
+  ) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = turtleState.canvasWidth;
+    const h = turtleState.canvasHeight;
+    const rs = renderScaleRef.current;
+    const bmpW = Math.max(1, Math.round(w * rs));
+    const bmpH = Math.max(1, Math.round(h * rs));
+
+    const sizeChanged =
+      lastCanvasSizeRef.current.w !== w ||
+      lastCanvasSizeRef.current.h !== h;
+    const colorChanged = lastCanvasColorRef.current !== turtleState.canvasColor;
+    const scaleChanged = lastRenderScaleRef.current !== rs;
+    const drawingsReplaced =
+      lastDrawingsRef.current !== drawingsArr &&
+      (drawingsLength < drawnCountRef.current || lastDrawingsRef.current === null);
+
+    if (sizeChanged || scaleChanged) {
+      canvas.width = bmpW;
+      canvas.height = bmpH;
+      lastCanvasSizeRef.current = { w, h };
+      lastRenderScaleRef.current = rs;
+    }
+
+    const needFullRepaint = sizeChanged || colorChanged || scaleChanged || drawingsReplaced;
+
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
+
+    if (needFullRepaint) {
+      ctx.fillStyle = turtleState.canvasColor;
+      ctx.fillRect(0, 0, w, h);
+      lastCanvasColorRef.current = turtleState.canvasColor;
+      renderCommands(ctx, w, h, turtleState.canvasColor, drawingsArr, 0, drawingsLength);
+      drawnCountRef.current = drawingsLength;
+    } else if (drawingsLength > drawnCountRef.current) {
+      renderCommands(
+        ctx, w, h, turtleState.canvasColor,
+        drawingsArr, drawnCountRef.current, drawingsLength,
+      );
+      drawnCountRef.current = drawingsLength;
+    }
+
+    lastDrawingsRef.current = drawingsArr;
+  }, []);
+
+  // Paint just the turtle sprite layer. Pure function of turtleState.
+  const paintSprite = useCallback((turtleState: TurtleState) => {
+    const canvas = turtleRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const w = turtleState.canvasWidth;
+    const h = turtleState.canvasHeight;
+    const rs = renderScaleRef.current;
+    const bmpW = Math.max(1, Math.round(w * rs));
+    const bmpH = Math.max(1, Math.round(h * rs));
+
+    if (canvas.width !== bmpW || canvas.height !== bmpH) {
+      canvas.width = bmpW;
+      canvas.height = bmpH;
+    } else {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, bmpW, bmpH);
+    }
+
+    if (!turtleState.visible) {
+      lastSpriteRef.current = {
+        x: turtleState.x, y: turtleState.y,
+        angle: turtleState.angle, visible: false,
+      };
+      return;
+    }
+
+    const sprite = getTurtleSprite();
+    if (!sprite) return;
+
+    ctx.setTransform(rs, 0, 0, rs, 0, 0);
+    ctx.save();
+    ctx.translate(turtleState.x, turtleState.y);
+    ctx.rotate((turtleState.angle * Math.PI) / 180);
+    ctx.drawImage(sprite, -DRAW_SIZE / 2, -DRAW_SIZE / 2, DRAW_SIZE, DRAW_SIZE);
+    ctx.restore();
+
+    lastSpriteRef.current = {
+      x: turtleState.x, y: turtleState.y,
+      angle: turtleState.angle, visible: turtleState.visible,
+    };
+  }, []);
 
   // Compute "fit" — the scale that fits the canvas inside the viewport with
   // a small margin. Used for resetView() and the initial render.
@@ -251,6 +445,36 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turtle.canvasWidth, turtle.canvasHeight]);
 
+  // Refit when the viewport itself resizes — phone rotation, split-pane
+  // drag, or mobile tab switch from hidden → visible where the layout box
+  // only just got its dimensions. We remember whether the user has
+  // manually panned/zoomed via a ref so we don't overwrite their view on
+  // every tiny size change.
+  const userAdjustedRef = useRef(false);
+  useEffect(() => {
+    const vp = viewportRef.current;
+    if (!vp) return;
+    let lastW = vp.clientWidth;
+    let lastH = vp.clientHeight;
+    const ro = new ResizeObserver(() => {
+      const w = vp.clientWidth;
+      const h = vp.clientHeight;
+      if (w === lastW && h === lastH) return;
+      lastW = w;
+      lastH = h;
+      // Only auto-refit if the user hasn't taken over the view (first
+      // wheel / drag / pinch flips userAdjustedRef). Otherwise we'd
+      // fight their zoom every time they nudge the split-pane.
+      if (!userAdjustedRef.current) {
+        const z = computeFitZoom();
+        setZoom(z);
+        setPan(centerPan(z));
+      }
+    });
+    ro.observe(vp);
+    return () => ro.disconnect();
+  }, [computeFitZoom, centerPan]);
+
   // Notify parent of zoom changes (e.g., to show "135%" in a chip).
   useEffect(() => {
     onZoomChange?.(effectiveZoom);
@@ -265,20 +489,45 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         return canvas.toDataURL('image/png');
       },
       resetView: () => {
+        // "Reset" is the user's explicit opt-back-in to auto-fit, so
+        // we clear the manual-adjustment flag — from here on, layout
+        // changes (phone rotation, split drag) will re-fit again.
+        userAdjustedRef.current = false;
         const z = computeFitZoom();
         setZoom(z);
         setPan(centerPan(z));
       },
       fitToScreen: () => {
+        userAdjustedRef.current = false;
         const z = computeFitZoom();
         setZoom(z);
         setPan(centerPan(z));
       },
-      zoomIn: () => setZoom(z => Math.min(MAX_ZOOM, z * 1.2)),
-      zoomOut: () => setZoom(z => Math.max(MIN_ZOOM, z / 1.2)),
+      zoomIn: () => {
+        userAdjustedRef.current = true;
+        setZoom(z => Math.min(MAX_ZOOM, z * 1.2));
+      },
+      zoomOut: () => {
+        userAdjustedRef.current = true;
+        setZoom(z => Math.max(MIN_ZOOM, z / 1.2));
+      },
       getZoom: () => effectiveZoom,
+      renderFrame: (ts, d, dl) => {
+        // Imperative per-frame update used during a run. Paints both
+        // canvases without triggering any React state update, so the
+        // rest of the app (toolbar, editor, inspector, split panes)
+        // doesn't re-render 60× a second just because the turtle moved.
+        liveInputsRef.current = { turtle: ts, drawings: d, drawingsLen: dl };
+        paintDrawings(ts, d, dl);
+        paintSprite(ts);
+      },
+      endRun: () => {
+        // Props are now the authoritative state — drop the live cache
+        // so subsequent zoom/resize repaints read the props.
+        liveInputsRef.current = null;
+      },
     }),
-    [computeFitZoom, centerPan, effectiveZoom],
+    [computeFitZoom, centerPan, effectiveZoom, paintDrawings, paintSprite],
   );
 
   // ── Wheel-to-zoom (zooms to cursor, like Figma/Photoshop). Wheel events
@@ -290,6 +539,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      userAdjustedRef.current = true;
       // Normalize delta: pixel mode is tiny, line mode is ~100, page mode huge.
       let delta = e.deltaY;
       if (e.deltaMode === 1) delta *= 16;
@@ -318,139 +568,210 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     return () => vp.removeEventListener('wheel', onWheel);
   }, [externalScale]);
 
-  // ── Pan: middle-click drag, space+drag, or plain left-drag on empty space.
+  // ── Pan + pinch-zoom (unified pointer handling).
+  //
+  // Gesture model:
+  //   • 1 pointer down  → pan      (mouse primary, trackpad tap-drag, 1-finger touch)
+  //   • 2 pointers down → pinch    (zoom around midpoint + pan with midpoint)
+  //   • extra pointers  → ignored  (keeps palms/3rd fingers from breaking the gesture)
+  //
+  // All touch gestures are captured so Safari/Chrome never try to scroll
+  // the page while the user is manipulating the canvas. touch-action: none
+  // on the viewport element in JSX is what makes this reliable on iOS.
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
 
-    let dragging = false;
-    let startX = 0;
-    let startY = 0;
-    let startPan = { x: 0, y: 0 };
+    // Active pointers, keyed by pointerId. Map keeps insertion order so
+    // the first two we see are "primary" and "secondary" for pinch math.
+    const pointers = new Map<number, { x: number; y: number }>();
 
-    const onPointerDown = (e: PointerEvent) => {
-      // Middle-click, right-click avoided, or primary with alt/space. For
-      // simplicity: primary button starts a pan.
-      if (e.button !== 0 && e.button !== 1) return;
-      dragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
+    // Pan state (single-pointer drag)
+    let panning = false;
+    let panStartClient = { x: 0, y: 0 };
+    let panStartValue = { x: 0, y: 0 };
+
+    // Pinch state (two-pointer)
+    let pinching = false;
+    let pinchStartDist = 0;
+    let pinchStartMid = { x: 0, y: 0 };
+    let pinchStartZoom = 1;
+    let pinchStartPan = { x: 0, y: 0 };
+
+    const first = () => {
+      const it = pointers.values();
+      const a = it.next().value;
+      const b = it.next().value;
+      return { a, b };
+    };
+
+    const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+      Math.hypot(a.x - b.x, a.y - b.y);
+
+    const midpoint = (a: { x: number; y: number }, b: { x: number; y: number }) => ({
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2,
+    });
+
+    const beginPinch = () => {
+      const { a, b } = first();
+      if (!a || !b) return;
+      pinching = true;
+      panning = false;
+      pinchStartDist = Math.max(1, dist(a, b));
+      pinchStartMid = midpoint(a, b);
+      setZoom(z => {
+        pinchStartZoom = z;
+        return z;
+      });
       setPan(p => {
-        startPan = p;
+        pinchStartPan = p;
         return p;
       });
-      vp.setPointerCapture(e.pointerId);
-      vp.style.cursor = 'grabbing';
-    };
-    const onPointerMove = (e: PointerEvent) => {
-      if (!dragging) return;
-      setPan({
-        x: startPan.x + (e.clientX - startX),
-        y: startPan.y + (e.clientY - startY),
-      });
-    };
-    const onPointerUp = (e: PointerEvent) => {
-      if (!dragging) return;
-      dragging = false;
-      try { vp.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
-      vp.style.cursor = '';
     };
 
-    vp.addEventListener('pointerdown', onPointerDown);
-    vp.addEventListener('pointermove', onPointerMove);
+    const beginPan = (x: number, y: number) => {
+      panning = true;
+      pinching = false;
+      panStartClient = { x, y };
+      setPan(p => {
+        panStartValue = p;
+        return p;
+      });
+      vp.style.cursor = 'grabbing';
+    };
+
+    const onPointerDown = (e: PointerEvent) => {
+      // Ignore right-click (context menu) and anything past two pointers
+      // so a third finger doesn't restart the gesture mid-pinch.
+      if (e.button === 2) return;
+      if (pointers.size >= 2) return;
+
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try { vp.setPointerCapture(e.pointerId); } catch { /* ignore */ }
+
+      if (pointers.size === 2) {
+        beginPinch();
+      } else {
+        beginPan(e.clientX, e.clientY);
+      }
+      userAdjustedRef.current = true;
+      // Prevent iOS/Android from treating this as a scroll gesture.
+      e.preventDefault();
+    };
+
+    const onPointerMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pinching && pointers.size >= 2) {
+        const { a, b } = first();
+        if (!a || !b) return;
+        const rect = vp.getBoundingClientRect();
+        const d = Math.max(1, dist(a, b));
+        const mid = midpoint(a, b);
+        const ratio = d / pinchStartDist;
+        const newZoom = Math.min(
+          MAX_ZOOM,
+          Math.max(MIN_ZOOM, pinchStartZoom * ratio),
+        );
+        // Pinch math: keep the world-point originally under the pinch's
+        // midpoint locked under the *current* midpoint. That gives both
+        // scale-around-midpoint AND two-finger-drag panning in one formula.
+        //   worldUnderStart = (pinchStartMid - rect - pinchStartPan) / (pinchStartZoom * sx)
+        //   newPan = currentMid - rect - worldUnderStart * (newZoom * sx)
+        const sx = externalScale;
+        const worldX = (pinchStartMid.x - rect.left - pinchStartPan.x) / (pinchStartZoom * sx);
+        const worldY = (pinchStartMid.y - rect.top - pinchStartPan.y) / (pinchStartZoom * sx);
+        setZoom(newZoom);
+        setPan({
+          x: mid.x - rect.left - worldX * newZoom * sx,
+          y: mid.y - rect.top - worldY * newZoom * sx,
+        });
+      } else if (panning) {
+        setPan({
+          x: panStartValue.x + (e.clientX - panStartClient.x),
+          y: panStartValue.y + (e.clientY - panStartClient.y),
+        });
+      }
+    };
+
+    const onPointerUp = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.delete(e.pointerId);
+      try { vp.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+
+      if (pointers.size === 1 && pinching) {
+        // Dropped from 2 → 1 finger: convert to a pan from the remaining
+        // pointer's current position so the view doesn't jump.
+        pinching = false;
+        const { a } = first();
+        if (a) beginPan(a.x, a.y);
+      } else if (pointers.size === 0) {
+        pinching = false;
+        panning = false;
+        vp.style.cursor = '';
+      }
+    };
+
+    vp.addEventListener('pointerdown', onPointerDown, { passive: false });
+    vp.addEventListener('pointermove', onPointerMove, { passive: false });
     vp.addEventListener('pointerup', onPointerUp);
     vp.addEventListener('pointercancel', onPointerUp);
+    vp.addEventListener('pointerleave', onPointerUp);
+    // Disable the browser's native gesture handling on iOS.
+    const blockGesture = (e: Event) => e.preventDefault();
+    vp.addEventListener('gesturestart', blockGesture as EventListener);
+    vp.addEventListener('gesturechange', blockGesture as EventListener);
+    vp.addEventListener('gestureend', blockGesture as EventListener);
     return () => {
       vp.removeEventListener('pointerdown', onPointerDown);
       vp.removeEventListener('pointermove', onPointerMove);
       vp.removeEventListener('pointerup', onPointerUp);
       vp.removeEventListener('pointercancel', onPointerUp);
+      vp.removeEventListener('pointerleave', onPointerUp);
+      vp.removeEventListener('gesturestart', blockGesture as EventListener);
+      vp.removeEventListener('gesturechange', blockGesture as EventListener);
+      vp.removeEventListener('gestureend', blockGesture as EventListener);
     };
-  }, []);
+  }, [externalScale]);
 
-  // Draw the canvas content — INCREMENTALLY when possible
+  // React-driven draw: fires on prop / state changes (e.g. run completion,
+  // renderScale change from zoom bucket). During a live run the interpreter
+  // instead calls `renderFrame` imperatively, bypassing React — see the
+  // handle below. Both paths land in the same `paintDrawings` / `paintSprite`
+  // routines, so the canvas stays in sync either way.
+  //
+  // Important: when the user zooms during a run, this effect fires with
+  // STALE props (`drawings=[]`, `turtle=initial`) because runCode reset
+  // them at run start. Painting those would wipe the canvas. We detect
+  // "a run has been painted live since the last prop change" by consulting
+  // `liveInputsRef` — if it's fresher than the incoming props, use it.
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
+    const live = liveInputsRef.current;
+    const useLive = live && live.drawingsLen > dLen;
+    const ts = useLive ? live!.turtle : turtle;
+    const d = useLive ? live!.drawings : drawings;
+    const dl = useLive ? live!.drawingsLen : dLen;
+    paintDrawings(ts, d, dl);
+  }, [
+    paintDrawings,
+    turtle, turtle.canvasWidth, turtle.canvasHeight, turtle.canvasColor,
+    drawings, dLen, renderScale,
+  ]);
 
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = turtle.canvasWidth;
-    const h = turtle.canvasHeight;
-
-    // Detect conditions that require a full repaint
-    const sizeChanged =
-      lastCanvasSizeRef.current.w !== w ||
-      lastCanvasSizeRef.current.h !== h;
-    const colorChanged = lastCanvasColorRef.current !== turtle.canvasColor;
-    const drawingsReplaced =
-      lastDrawingsRef.current !== drawings &&
-      // array reference changed AND it's not a superset of what we drew
-      (drawings.length < drawnCountRef.current ||
-        (lastDrawingsRef.current === null));
-
-    // Only resize the canvas if dimensions changed (resizing clears it and is
-    // expensive; doing it every render was a big perf cost).
-    if (sizeChanged) {
-      canvas.width = w;
-      canvas.height = h;
-      lastCanvasSizeRef.current = { w, h };
-    }
-
-    const needFullRepaint = sizeChanged || colorChanged || drawingsReplaced;
-
-    if (needFullRepaint) {
-      ctx.fillStyle = turtle.canvasColor;
-      ctx.fillRect(0, 0, w, h);
-      lastCanvasColorRef.current = turtle.canvasColor;
-      renderCommands(ctx, w, h, turtle.canvasColor, drawings, 0, drawings.length);
-      drawnCountRef.current = drawings.length;
-    } else if (drawings.length > drawnCountRef.current) {
-      // Happy path during animation: only draw the new commands appended
-      // since last render. O(delta) instead of O(n).
-      renderCommands(
-        ctx,
-        w,
-        h,
-        turtle.canvasColor,
-        drawings,
-        drawnCountRef.current,
-        drawings.length,
-      );
-      drawnCountRef.current = drawings.length;
-    }
-
-    lastDrawingsRef.current = drawings;
-  }, [turtle.canvasWidth, turtle.canvasHeight, turtle.canvasColor, drawings]);
-
-  // Draw the turtle sprite — now a cheap clearRect + drawImage of a cached bitmap
   useEffect(() => {
-    const canvas = turtleRef.current;
-    if (!canvas) return;
-
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const w = turtle.canvasWidth;
-    const h = turtle.canvasHeight;
-
-    if (canvas.width !== w || canvas.height !== h) {
-      canvas.width = w;
-      canvas.height = h;
-    } else {
-      ctx.clearRect(0, 0, w, h);
-    }
-
-    if (!turtle.visible) return;
-
-    const sprite = getTurtleSprite();
-    ctx.save();
-    ctx.translate(turtle.x, turtle.y);
-    ctx.rotate((turtle.angle * Math.PI) / 180);
-    ctx.drawImage(sprite, -SPRITE_SIZE / 2, -SPRITE_SIZE / 2);
-    ctx.restore();
-  }, [turtle]);
+    const live = liveInputsRef.current;
+    // Prefer live turtle during a run (same reasoning as above — props
+    // are reset to the initial state until `runCode` resolves).
+    const ts = live ? live.turtle : turtle;
+    paintSprite(ts);
+  }, [
+    paintSprite,
+    turtle, turtle.x, turtle.y, turtle.angle, turtle.visible,
+    turtle.canvasWidth, turtle.canvasHeight,
+    spriteTick, renderScale,
+  ]);
 
   const w = turtle.canvasWidth;
   const h = turtle.canvasHeight;
@@ -470,7 +791,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   );
 
   return (
-    <div ref={containerRef} className="w-full h-full relative" style={{ minHeight: 0 }}>
+    <div className="w-full h-full relative" style={{ minHeight: 0 }}>
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden cursor-grab touch-none"
@@ -500,7 +821,12 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               position: 'absolute',
               top: 0,
               left: 0,
-              imageRendering: totalScale >= 4 ? 'pixelated' : 'auto',
+              // With bitmap-side supersampling via `renderScale`, the canvas
+              // has enough real pixels to stay crisp at most zoom levels.
+              // Only at extreme zoom (beyond our RENDER_SCALE_CAP) does the
+              // CSS upscale expose individual pixels — fall back to crisp
+              // nearest-neighbour there so it at least looks intentional.
+              imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
           <canvas
@@ -511,6 +837,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               position: 'absolute',
               top: 0,
               left: 0,
+              imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
         </div>

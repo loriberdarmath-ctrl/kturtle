@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo, useDeferredValue } from 'react';
 import { TurtleCanvas, TurtleCanvasHandle } from './components/TurtleCanvas';
 import { CodeEditor, CodeEditorHandle } from './components/CodeEditor';
 import { InspectorPane, InspectorTab } from './components/InspectorPane';
@@ -16,6 +16,8 @@ import { TurtleError } from './interpreter/errors';
 import { examples, defaultExample } from './examples';
 import { SVGConverter } from './components/SVGConverter';
 import { useT } from './i18n/context';
+import { useIsMobile } from './utils/useBreakpoint';
+import { MobileShell } from './components/MobileShell';
 
 const defaultCode = examples[defaultExample];
 
@@ -24,8 +26,14 @@ const SPEED_STEPS = [0, 30, 75, 150, 300, 600, 1200] as const;
 
 export function App() {
   const { t, locale, setLocale, locales } = useT();
+  const isMobile = useIsMobile();
 
   const [code, setCode] = useState(defaultCode);
+  // Passed to subtrees that don't need up-to-the-millisecond code (the
+  // Inspector shows it in error snippets only). React schedules these at
+  // a lower priority so fast typing doesn't stutter while React repaints
+  // every syntax-highlighted char in the editor.
+  const deferredCode = useDeferredValue(code);
   const [fileName, setFileName] = useState<string>('turtle.turtle');
   const [exportedImage, setExportedImage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
@@ -52,7 +60,15 @@ export function App() {
     canvasColor: '#ffffff',
     fontSize: 12,
   });
+  // `drawings` is the *committed* view of interpreter output that React
+  // reads. On long programs we used to slice() the live interpreter array on
+  // every rAF, which became the dominant cost (O(n) alloc × 60Hz). Now we
+  // commit the live array reference itself and expose a separate
+  // `drawingsLen` counter — the canvas reads only up to that length, and
+  // consumers that need the *final* state (SVG export, post-run inspection)
+  // get a stable reference that we snapshot exactly once when a run ends.
   const [drawings, setDrawings] = useState<DrawCommand[]>([]);
+  const [drawingsLen, setDrawingsLen] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
   const [errors, setErrors] = useState<TurtleError[]>([]);
   /** Convenience — the first error (the one surfaced on the toolbar chip). */
@@ -70,6 +86,40 @@ export function App() {
   const [showFileMenu, setShowFileMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
 
+  // ── Mobile-only UI state ────────────────────────────────────────────
+  // Which of the three stacked workspaces is visible on phones. Defaults
+  // to "code" so the user starts where they can start typing. Auto-switches
+  // to "canvas" when a run starts (so they see the drawing happen) and to
+  // "console" when errors appear (so they can't miss a problem).
+  type MobileView = 'code' | 'canvas' | 'console';
+  const [mobileView, setMobileView] = useState<MobileView>('code');
+  const [showMobileMore, setShowMobileMore] = useState(false);
+
+  // When a run begins, swing the view to the canvas automatically on
+  // phones. On desktop we stay put — the canvas is already visible.
+  const prevIsRunning = useRef(false);
+  useEffect(() => {
+    if (!isMobile) return;
+    if (isRunning && !prevIsRunning.current) {
+      setMobileView('canvas');
+    }
+    prevIsRunning.current = isRunning;
+  }, [isRunning, isMobile]);
+
+  // When the first error appears after a run, pop the console tab so the
+  // user sees it. We key this off the `errors` array length growing from
+  // zero — otherwise every keystroke during live error highlighting
+  // would keep hijacking the view.
+  const prevErrorCount = useRef(0);
+  useEffect(() => {
+    if (!isMobile) return;
+    if (errors.length > 0 && prevErrorCount.current === 0) {
+      setMobileView('console');
+      setInspectorTab('errors');
+    }
+    prevErrorCount.current = errors.length;
+  }, [errors.length, isMobile]);
+
   // Keep speed in sync with a live interpreter so the user can slow down /
   // speed up a running animation without restarting.
   const currentSpeedMs = SPEED_STEPS[speedIdx] ?? 0;
@@ -81,34 +131,97 @@ export function App() {
   // (every command at animation speeds, every 50 commands at instant speed).
   // We stash the latest state in refs and commit a single React update per
   // animation frame.
+  //
+  // The pending refs are all *views* on the interpreter's live state, not
+  // independent snapshots. We only copy at flush time, and only when a
+  // version counter says the underlying data actually changed — which
+  // dramatically cuts allocation churn on instant-mode runs (previously
+  // every onStep cloned the full drawings array).
   const pendingStateRef = useRef<TurtleState | null>(null);
   const pendingDrawingsRef = useRef<DrawCommand[] | null>(null);
+  const pendingDrawingsLenRef = useRef<number>(-1);
   const pendingLineRef = useRef<number | null>(null);
-  const pendingVarsRef = useRef<Record<string, number | string> | null>(null);
-  // Errors are staged the same way so they appear *during* the run (e.g.
-  // animated mode hitting a bad command on line 12 shouldn't wait until the
-  // program finishes to light up line 12 in red). We stash the latest
-  // snapshot and flush on the next animation frame along with the rest.
-  const pendingErrorsRef = useRef<TurtleError[] | null>(null);
+  const pendingVarsMapRef = useRef<Map<string, number | string> | null>(null);
+  const pendingVarsVersionRef = useRef<number>(-1);
+  const pendingErrorsListRef = useRef<TurtleError[] | null>(null);
+  const pendingErrorsVersionRef = useRef<number>(-1);
+  // Last-committed versions so we can skip redundant React state updates.
+  const committedDrawingsLenRef = useRef<number>(0);
+  const committedVarsVersionRef = useRef<number>(-1);
+  const committedErrorsVersionRef = useRef<number>(-1);
   const rafHandleRef = useRef<number | null>(null);
+  /** True while we want variables to appear in the Inspector during a
+   *  run (animation speeds). At instant speed we skip this to avoid
+   *  re-rendering the Inspector 60× a second on programs that reassign
+   *  a counter every step. Set by `runCode`. */
+  const liveVarsDuringRunRef = useRef<boolean>(false);
 
+  /**
+   * rAF flush — during a run, does NOT call setState on the hot path.
+   *
+   * Instead, it calls imperative handles on TurtleCanvas and CodeEditor
+   * that update the canvas bitmap and the gutter stripe directly via
+   * DOM. This keeps App.tsx (and its huge header / split-pane tree)
+   * completely out of the 60Hz re-render loop. The only React state
+   * we DO commit during a run is errors — those are rare and the user
+   * needs to see them promptly.
+   *
+   * When the run ends, `runCode` does a final setState with the
+   * authoritative result, so all React-driven consumers (SVG export,
+   * Inspector's "final variables" view, etc.) converge to the correct
+   * end state.
+   */
   const flushPending = useCallback(() => {
     rafHandleRef.current = null;
+
     const s = pendingStateRef.current;
-    const d = pendingDrawingsRef.current;
+    const dArr = pendingDrawingsRef.current;
+    const dLen = pendingDrawingsLenRef.current;
     const l = pendingLineRef.current;
-    const v = pendingVarsRef.current;
-    const e = pendingErrorsRef.current;
     pendingStateRef.current = null;
     pendingDrawingsRef.current = null;
+    pendingDrawingsLenRef.current = -1;
     pendingLineRef.current = null;
-    pendingVarsRef.current = null;
-    pendingErrorsRef.current = null;
-    if (s) setTurtle(s);
-    if (d) setDrawings(d);
-    if (l !== null) setExecutingLine(l);
-    if (v) setVariables(v);
-    if (e) setErrors(e);
+
+    // Fast path: paint directly to the canvas + move the editor stripe
+    // via DOM. No React state, no re-render, no memo checks.
+    if (s && dArr && dLen >= 0) {
+      canvasRef.current?.renderFrame(s, dArr, dLen);
+    }
+    if (l !== null) {
+      editorRef.current?.setExecutingLineImperative(l);
+    }
+
+    // Errors: slice only when the version moved. These genuinely need
+    // to be in React state because the Inspector shows them as a list.
+    const eArr = pendingErrorsListRef.current;
+    const eVer = pendingErrorsVersionRef.current;
+    pendingErrorsListRef.current = null;
+    pendingErrorsVersionRef.current = -1;
+    if (eArr && eVer !== committedErrorsVersionRef.current) {
+      committedErrorsVersionRef.current = eVer;
+      setErrors(eArr.slice());
+    }
+
+    // Variables: live-view in the Inspector only matters at animation
+    // speeds (users watching each step). At instant speed the run
+    // finishes in a blink and a final post-run commit is enough —
+    // there we skip the per-frame snapshot to avoid re-rendering the
+    // Inspector while a 10k-command program is spinning.
+    const vMap = pendingVarsMapRef.current;
+    const vVer = pendingVarsVersionRef.current;
+    pendingVarsMapRef.current = null;
+    pendingVarsVersionRef.current = -1;
+    if (
+      vMap &&
+      vVer !== committedVarsVersionRef.current &&
+      liveVarsDuringRunRef.current
+    ) {
+      committedVarsVersionRef.current = vVer;
+      const obj: Record<string, number | string> = {};
+      vMap.forEach((value, key) => { obj[key] = value; });
+      setVariables(obj);
+    }
   }, []);
 
   const runCode = useCallback(async () => {
@@ -122,9 +235,16 @@ export function App() {
     setErrors([]);
     setOutput([]);
     setDrawings([]);
+    setDrawingsLen(0);
     setVariables({});
     setFunctionNames([]);
     setExecutingLine(undefined);
+
+    // Only commit variables to React state mid-run when the user is
+    // watching at animation speeds (>0ms per step). At instant speed
+    // the Inspector would re-render 60× a second for no observable
+    // benefit — the run is over before the eye resolves any snapshot.
+    liveVarsDuringRunRef.current = currentSpeedMs > 0;
 
     // Collect tokenizer errors (only unterminated strings currently throw
     // synchronously — tokenize can't easily recover from unknown chars so
@@ -156,18 +276,24 @@ export function App() {
     const ast = parser.parse();
     const parseErrors = parser.getErrors();
 
+    // Reset committed versions so the first real step always gets flushed.
+    committedDrawingsLenRef.current = 0;
+    committedVarsVersionRef.current = -1;
+    committedErrorsVersionRef.current = -1;
+
     const interpreter = new Interpreter(info => {
+      // All fields here are live references into the interpreter. We
+      // just stash them — the actual copy happens in flushPending, and
+      // only when a version/length change confirms something really
+      // changed. This keeps onStep O(1) even on huge drawings.
       pendingStateRef.current = info.state;
       pendingDrawingsRef.current = info.drawings;
+      pendingDrawingsLenRef.current = info.drawings.length;
       pendingLineRef.current = info.line;
-      pendingVarsRef.current = info.variables;
-      // Only stage errors when the snapshot differs from what's on screen
-      // (avoids a state update every single step when nothing has gone
-      // wrong). The identity check works because the interpreter produces
-      // a fresh slice only when it actually appended an error.
-      if (info.errors.length > 0) {
-        pendingErrorsRef.current = info.errors;
-      }
+      pendingVarsMapRef.current = info.variables;
+      pendingVarsVersionRef.current = info.variablesVersion;
+      pendingErrorsListRef.current = info.errors;
+      pendingErrorsVersionRef.current = info.errorsVersion;
       if (rafHandleRef.current === null) {
         rafHandleRef.current = requestAnimationFrame(flushPending);
       }
@@ -194,17 +320,25 @@ export function App() {
       }
       pendingStateRef.current = null;
       pendingDrawingsRef.current = null;
+      pendingDrawingsLenRef.current = -1;
       pendingLineRef.current = null;
-      pendingVarsRef.current = null;
-      pendingErrorsRef.current = null;
+      pendingVarsMapRef.current = null;
+      pendingVarsVersionRef.current = -1;
+      pendingErrorsListRef.current = null;
+      pendingErrorsVersionRef.current = -1;
 
       setTurtle(result.turtle);
       setDrawings(result.drawings);
+      setDrawingsLen(result.drawings.length);
       setOutput(result.output);
       setVariables(result.variables);
       setFunctionNames(result.functionNames);
       setExecutingLine(undefined);
       setErrors(result.errors);
+      // Tell the canvas it can drop its "live inputs" cache — the React
+      // props we just committed now match what's already painted, and
+      // further repaints (zoom, resize) should trust the props.
+      canvasRef.current?.endRun();
 
       if (result.errors.length > 0) {
         setInspectorTab('errors');
@@ -245,6 +379,7 @@ export function App() {
       fontSize: 12,
     });
     setDrawings([]);
+    setDrawingsLen(0);
     setErrors([]);
     setOutput([]);
     setVariables({});
@@ -320,6 +455,12 @@ export function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code, t]);
 
+  // Cached line count — `code.split('\n').length` was running on every
+  // App re-render (incl. every ~16ms during a run before we switched to
+  // the imperative paint path). Memoizing keeps it O(code changes)
+  // instead of O(frames).
+  const codeLineCount = useMemo(() => code.split('\n').length, [code]);
+
   const speedLabel = useMemo(() => {
     if (speedIdx === 0) return t('toolbar.speed.instant');
     if (speedIdx <= 2) return t('toolbar.speed.fast');
@@ -328,8 +469,58 @@ export function App() {
     return t('toolbar.speed.step');
   }, [speedIdx, t]);
 
+  // ── Mobile branch — simpler single-column shell with a bottom tab bar.
+  // All the run/edit/save logic is shared with desktop; the mobile shell
+  // just re-arranges the UI. We pass everything as one bundle to keep
+  // the prop wiring legible.
+  if (isMobile) {
+    return (
+      <MobileShell
+        app={{
+          code, setCode,
+          deferredCode,
+          fileName,
+          turtle,
+          drawings,
+          drawingsLen,
+          errors, error,
+          output,
+          variables,
+          functionNames,
+          executingLine,
+          isRunning,
+          runCode,
+          resetCanvas,
+          saveFile,
+          openFile,
+          newFile,
+          exportSvg,
+          exportPngFromCanvas: () => canvasRef.current?.exportImage() ?? null,
+          canvasRef,
+          editorRef,
+          speedIdx, setSpeedIdx,
+          speedLabel,
+          speedStepsLen: SPEED_STEPS.length,
+          inspectorTab, setInspectorTab,
+          mobileView, setMobileView,
+          showMobileMore, setShowMobileMore,
+          canvasZoomDisplay, setCanvasZoomDisplay,
+          setShowColorPicker,
+          setShowOpenDialog,
+          setShowExportModal,
+          setExportedImage,
+          setShowConverterModal,
+          handleFilePicked,
+          // Modal visibility + data so MobileShell can render them fullscreen.
+          exportedImage, showExportModal,
+          showColorPicker, showOpenDialog, showConverterModal,
+        }}
+      />
+    );
+  }
+
   return (
-    <div className="h-screen flex flex-col text-ink-900 overflow-hidden">
+    <div className="app-shell flex flex-col text-ink-900 overflow-hidden">
       {/* ─────────── HEADER / TOOLBAR ─────────── */}
       {/* Layout strategy: three horizontal zones.
           [left cluster: brand + file + run controls]
@@ -340,15 +531,20 @@ export function App() {
           layout shift / "menu under something" bugs. */}
       <header className="flex-shrink-0 border-b border-line bg-paper/90 backdrop-blur">
         <div className="px-3 sm:px-4 h-12 flex items-center gap-2 min-w-0">
-          {/* Logo + wordmark */}
+          {/* Logo + wordmark. Using the official KTurtle logo (Wikimedia
+              Commons, File:KTurtle_logo.svg) so our brand mark matches
+              the upstream desktop app. The file lives in /public so Vite
+              serves it as a plain asset. */}
           <div className="flex items-center gap-2.5 flex-shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-white border border-line flex items-center justify-center">
-              <svg viewBox="0 0 100 100" className="w-5 h-5">
-                <ellipse cx="50" cy="55" rx="24" ry="28" fill="#8fb488" stroke="#5f7a5a" strokeWidth="2.5" />
-                <circle cx="50" cy="25" r="11" fill="#a9c9a1" stroke="#5f7a5a" strokeWidth="2" />
-                <circle cx="46" cy="23" r="1.6" fill="#1a1814" />
-                <circle cx="54" cy="23" r="1.6" fill="#1a1814" />
-              </svg>
+            <div className="w-8 h-8 rounded-lg bg-white border border-line flex items-center justify-center overflow-hidden">
+              <img
+                src={`${import.meta.env.BASE_URL}kturtle-logo.svg`}
+                alt={t('app.title')}
+                className="w-6 h-6"
+                width={24}
+                height={24}
+                draggable={false}
+              />
             </div>
             <div
               className="font-display text-[16px] font-medium tracking-tight leading-none"
@@ -672,7 +868,7 @@ export function App() {
               <div className="flex items-center gap-2 text-[11px] text-ink-500 font-mono flex-shrink-0">
                 <span className="truncate max-w-[140px]">{fileName}</span>
                 <span className="text-ink-300">·</span>
-                <span>{t('editor.lines', code.split('\n').length)}</span>
+                <span>{t('editor.lines', codeLineCount)}</span>
               </div>
             </div>
             <div className="flex-1 min-h-0">
@@ -700,6 +896,7 @@ export function App() {
                   canvasRef={canvasRef}
                   turtle={turtle}
                   drawings={drawings}
+                  drawingsLen={drawingsLen}
                   canvasZoomDisplay={canvasZoomDisplay}
                   setCanvasZoomDisplay={setCanvasZoomDisplay}
                   onHideInspector={() => setInspectorVisible(false)}
@@ -711,7 +908,7 @@ export function App() {
                   turtle={turtle}
                   variables={variables}
                   functionNames={functionNames}
-                  code={code}
+                  code={deferredCode}
                   activeTab={inspectorTab}
                   onTabChange={setInspectorTab}
                   onJumpToLine={line => editorRef.current?.jumpToLine(line)}
@@ -723,6 +920,7 @@ export function App() {
                 canvasRef={canvasRef}
                 turtle={turtle}
                 drawings={drawings}
+                drawingsLen={drawingsLen}
                 canvasZoomDisplay={canvasZoomDisplay}
                 setCanvasZoomDisplay={setCanvasZoomDisplay}
                 onHideInspector={() => setInspectorVisible(true)}
@@ -886,6 +1084,7 @@ function CanvasPane({
   canvasRef,
   turtle,
   drawings,
+  drawingsLen,
   canvasZoomDisplay,
   setCanvasZoomDisplay,
   onHideInspector,
@@ -894,6 +1093,7 @@ function CanvasPane({
   canvasRef: React.RefObject<TurtleCanvasHandle | null>;
   turtle: TurtleState;
   drawings: DrawCommand[];
+  drawingsLen: number;
   canvasZoomDisplay: number;
   setCanvasZoomDisplay: (n: number) => void;
   onHideInspector: () => void;
@@ -964,6 +1164,7 @@ function CanvasPane({
           ref={canvasRef}
           turtle={turtle}
           drawings={drawings}
+          drawingsLen={drawingsLen}
           onZoomChange={setCanvasZoomDisplay}
         />
         <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none text-[10.5px] text-ink-500 bg-white/70 backdrop-blur px-2 py-0.5 rounded-full border border-line/70">

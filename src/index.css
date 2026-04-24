@@ -134,6 +134,26 @@ body {
 .delay-4 { animation-delay: 0.22s; }
 .delay-5 { animation-delay: 0.28s; }
 
+/* Respect prefers-reduced-motion. Entrance animations become instant
+   (still visible — they set the final state) and long transitions
+   drop to a minimal 0.01ms, which the browser treats as "no anim"
+   without breaking code that observes `transitionend`. */
+@media (prefers-reduced-motion: reduce) {
+  .anim-rise,
+  .anim-fade,
+  .anim-pop,
+  .anim-sheet {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* Tabular numbers for metrics */
 .tab-nums {
   font-variant-numeric: tabular-nums;
@@ -205,4 +225,218 @@ body {
   background: #fbf9f3;
   border: 1px solid var(--color-line);
   border-radius: 14px;
+}
+
+/* ────────────────── Mobile adaptations ──────────────────
+   The desktop layout is a 3-column splitter (editor | canvas | inspector).
+   That doesn't work below ~720px, so App.tsx swaps in a single-view
+   workspace with a bottom tab bar. These globals handle the things CSS
+   has to own rather than React. */
+
+/* Use 100dvh for the app shell so mobile browsers' URL-bar chrome
+   doesn't chop off the bottom tab bar. 100vh on iOS includes the space
+   under the bar; 100dvh tracks the actual visible rect. */
+:root {
+  --app-vh: 100vh;
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-vh: 100dvh;
+  }
+}
+
+.app-shell {
+  height: var(--app-vh);
+  /* Respect the notch / home-indicator on iOS. Horizontal insets are
+     applied to containers that reach the edges; vertical insets are
+     applied only to the top header and bottom tab bar. */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+  box-sizing: border-box;
+}
+
+/* Any element that should behave as a tappable control on touch devices.
+   Apple's HIG / Material guidelines both recommend 44px minimum — we
+   enforce it on mobile only so desktop UIs stay dense. */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}
+
+/* Kill the 300ms click delay and blue tap flash on webkit-touch-callout. */
+button,
+a,
+[role='button'],
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+/* iOS adds an automatic grey highlight + zoom-on-focus when input fonts
+   are smaller than 16px. CodeEditor overrides to 16px on mobile in-code;
+   the global fallback here covers any input we forgot. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Scrollbars — on touch devices they're ugly and useless. Hide them. */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    display: none;
+  }
+  * {
+    scrollbar-width: none;
+  }
+}
+
+/* Disable backdrop-blur for users who prefer reduced motion. Blur is
+   cheap on modern GPUs but brutally slow on old mobile hardware and on
+   Windows machines without hardware acceleration. The bg-*/<alpha>
+   Tailwind tokens already give us a readable semi-opaque fallback. */
+@media (prefers-reduced-motion: reduce) {
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+}
+
+/* Syntax-highlight token classes.
+   The CodeEditor used to emit inline style="color:..." on every <span>,
+   which meant every keystroke produced ~500 style attrs the browser had
+   to parse. Switching to classes cuts the generated HTML size roughly
+   in half and lets the browser share rule lookups across all tokens. */
+.syntax-comment    { color: #a49c8c; font-style: italic; }
+.syntax-string     { color: #6c8c61; }
+.syntax-number     { color: #b6652a; }
+.syntax-variable   { color: #8a5d3b; font-weight: 500; }
+.syntax-bracket    { color: #5c564c; font-weight: 600; }
+.syntax-keyword    { color: #c85a2a; font-weight: 600; }
+.syntax-logical    { color: #8c6ba8; font-weight: 500; }
+.syntax-command    { color: #3d6b8a; font-weight: 500; }
+.syntax-comparison { color: #b6652a; font-weight: 600; }
+.syntax-operator   { color: #807869; }
+.syntax-text       { color: #2b2722; }
+
+/* Prevent the browser's overscroll bounce from stealing vertical pans
+   inside the canvas / editor (especially Safari on iPhone). */
+.no-overscroll {
+  overscroll-behavior: contain;
+}
+
+/* A full-width bottom tab bar used by the mobile workspace. Pinned via
+   position:sticky inside a flex column so it moves with the keyboard on
+   Android and stays clear of the iOS home indicator (padding already
+   added by .app-shell). */
+.mobile-tabbar {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  background: var(--color-paper);
+  border-top: 1px solid var(--color-line);
+  box-shadow: 0 -4px 16px -8px rgba(26, 24, 20, 0.08);
+}
+
+.mobile-tab {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 8px 6px 10px;
+  min-height: 54px;
+  color: var(--color-ink-500);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  font-weight: 500;
+  transition:
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.mobile-tab[data-active='true'] {
+  color: var(--color-ink-900);
+}
+.mobile-tab[data-active='true']::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 28px;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: var(--color-accent);
+  transform: translateX(-50%);
+}
+
+.mobile-tab .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-tab .badge {
+  position: absolute;
+  top: 4px;
+  right: calc(50% - 20px);
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: #fff;
+  font-size: 9.5px;
+  line-height: 16px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bottom sheet entrance — used by the "More" drawer in the mobile
+   toolbar and the full-screen modals on phones. */
+@keyframes sheet-in {
+  from {
+    transform: translateY(100%);
+    opacity: 0.4;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+.anim-sheet {
+  animation: sheet-in 0.25s cubic-bezier(0.2, 0.85, 0.25, 1) both;
+}
+
+/* Thin "grabber" used on mobile sheets and on the canvas pane drawer. */
+.sheet-grabber {
+  width: 36px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-ink-300);
+  margin: 8px auto 4px;
+}
+
+/* Desktop 3-column layout becomes one column on mobile. The SplitPane
+   component listens for this via matchMedia in a useBreakpoint() hook. */
+@media (max-width: 767px) {
+  .desktop-only {
+    display: none !important;
+  }
+}
+@media (min-width: 768px) {
+  .mobile-only {
+    display: none !important;
+  }
 }
