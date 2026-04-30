@@ -27,6 +27,12 @@ interface TurtleCanvasProps {
    */
   drawingsLen?: number;
   /**
+   * Whether the interpreter is currently running. When false (idle), an
+   * SVG overlay is rendered on top of the raster canvas so the drawing
+   * stays perfectly crisp at any zoom level.
+   */
+  isRunning?: boolean;
+  /**
    * External, UI-driven zoom (0.5..N). This multiplies the user's internal
    * wheel zoom — the canvas computes an effective zoom from both.
    */
@@ -222,6 +228,93 @@ function renderCommands(
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 40;
 
+/**
+ * Pure SVG representation of draw commands. Rendered as an overlay on top
+ * of the raster canvas when the interpreter is idle so zooming in stays
+ * perfectly crisp at any magnification.
+ */
+const SvgDrawings = memo(function SvgDrawings({
+  drawings,
+  drawingsLen,
+  canvasColor,
+  canvasWidth,
+  canvasHeight,
+}: {
+  drawings: DrawCommand[];
+  drawingsLen: number;
+  canvasColor: string;
+  canvasWidth: number;
+  canvasHeight: number;
+}) {
+  const elements = useMemo(() => {
+    let bgColor = canvasColor;
+    let els: React.ReactElement[] = [];
+    for (let i = 0; i < drawingsLen; i++) {
+      const cmd = drawings[i];
+      switch (cmd.type) {
+        case 'clear':
+          els = [];
+          break;
+        case 'canvasColor':
+          if (cmd.color) bgColor = cmd.color;
+          els = [];
+          break;
+        case 'line': {
+          if (
+            cmd.x1 === undefined || cmd.y1 === undefined ||
+            cmd.x2 === undefined || cmd.y2 === undefined
+          ) break;
+          els.push(
+            <line
+              key={i}
+              x1={cmd.x1}
+              y1={cmd.y1}
+              x2={cmd.x2}
+              y2={cmd.y2}
+              stroke={cmd.color || '#000'}
+              strokeWidth={cmd.width ?? 1}
+              strokeLinecap="square"
+              strokeLinejoin="bevel"
+            />,
+          );
+          break;
+        }
+        case 'text': {
+          if (cmd.x1 === undefined || cmd.y1 === undefined || !cmd.text) break;
+          els.push(
+            <text
+              key={i}
+              x={cmd.x1}
+              y={cmd.y1}
+              fill={cmd.color || '#000'}
+              fontSize={cmd.fontSize ?? 12}
+              fontFamily="sans-serif"
+              dominantBaseline="hanging"
+            >
+              {cmd.text}
+            </text>,
+          );
+          break;
+        }
+      }
+    }
+    return { bgColor, els };
+  }, [drawings, drawingsLen, canvasColor]);
+
+  return (
+    <>
+      <rect
+        x={0}
+        y={0}
+        width={canvasWidth}
+        height={canvasHeight}
+        fill={elements.bgColor}
+      />
+      {elements.els}
+    </>
+  );
+});
+
 // How aggressively the backing bitmap follows the visual zoom. The canvas
 // stores its content as a raster: if we only render at logical size and CSS
 // scales it up, zooming in reveals chunky pixels. To stay crisp we match the
@@ -245,7 +338,7 @@ function bucketRenderScale(visualScale: number): number {
 }
 
 const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
-  ({ turtle, drawings, drawingsLen, externalScale = 1, onZoomChange }, ref) => {
+  ({ turtle, drawings, drawingsLen, isRunning = false, externalScale = 1, onZoomChange }, ref) => {
   // Effective command count. When the caller omits `drawingsLen` we fall
   // back to array length (legacy behaviour). When present, it acts as a
   // version counter — letting App.tsx commit the same array reference on
@@ -791,7 +884,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   );
 
   return (
-    <div className="w-full h-full relative" style={{ minHeight: 0 }}>
+    <div className="w-full h-full relative overflow-hidden" style={{ minHeight: 0 }}>
       <div
         ref={viewportRef}
         className="absolute inset-0 overflow-hidden cursor-grab touch-none"
@@ -821,11 +914,9 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               position: 'absolute',
               top: 0,
               left: 0,
-              // With bitmap-side supersampling via `renderScale`, the canvas
-              // has enough real pixels to stay crisp at most zoom levels.
-              // Only at extreme zoom (beyond our RENDER_SCALE_CAP) does the
-              // CSS upscale expose individual pixels — fall back to crisp
-              // nearest-neighbour there so it at least looks intentional.
+              // Hide the raster canvas when idle and SVG overlay is active.
+              // This ensures the crisp SVG is the only visible layer.
+              visibility: (!isRunning && dLen > 0) ? 'hidden' : 'visible',
               imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
@@ -837,11 +928,41 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               position: 'absolute',
               top: 0,
               left: 0,
+              visibility: (!isRunning && dLen > 0) ? 'hidden' : 'visible',
               imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
         </div>
       </div>
+      {/* SVG overlay — rendered OUTSIDE the CSS-scaled container so the
+          browser rasterizes it as true vectors at display resolution.
+          Uses the same pan/zoom transform but as an SVG viewBox shift,
+          so zooming in stays perfectly crisp at any magnification. */}
+      {!isRunning && dLen > 0 && (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox={`0 0 ${w} ${h}`}
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: 0,
+            width: w * totalScale,
+            height: h * totalScale,
+            transform: `translate(${pan.x}px, ${pan.y}px)`,
+            transformOrigin: '0 0',
+            pointerEvents: 'none',
+            overflow: 'hidden',
+          }}
+        >
+          <SvgDrawings
+            drawings={drawings}
+            drawingsLen={dLen}
+            canvasColor={turtle.canvasColor || '#ffffff'}
+            canvasWidth={w}
+            canvasHeight={h}
+          />
+        </svg>
+      )}
     </div>
   );
 });

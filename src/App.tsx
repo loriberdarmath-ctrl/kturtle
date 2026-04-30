@@ -289,6 +289,17 @@ export function App() {
     const ast = parser.parse();
     const parseErrors = parser.getErrors();
 
+    // Extract user-defined function names from the AST so the Inspector
+    // can display them immediately when the run starts (not only after
+    // the run completes). `learn` nodes are top-level declarations.
+    const astBody = ast.type === 'Program' ? ast.body : [];
+    const learnedNames = astBody
+      .filter((node: any) => node.type === 'Learn')
+      .map((node: any) => node.name as string);
+    if (learnedNames.length > 0) {
+      setFunctionNames(learnedNames);
+    }
+
     // Reset committed versions so the first real step always gets flushed.
     committedDrawingsLenRef.current = 0;
     committedVarsVersionRef.current = -1;
@@ -539,14 +550,14 @@ export function App() {
           [right cluster: status + language + error chip]
           Nothing ever wraps → toolbar height is constant, avoiding the
           layout shift / "menu under something" bugs. */}
-      <header className="flex-shrink-0 border-b border-line bg-paper/90 backdrop-blur">
-        <div className="px-3 sm:px-4 h-12 flex items-center gap-2 min-w-0">
+      <header className="flex-shrink-0 toolbar-header">
+        <div className="px-3 sm:px-5 h-13 flex items-center gap-2.5 min-w-0">
           {/* Logo + wordmark. Using the official KTurtle logo (Wikimedia
               Commons, File:KTurtle_logo.svg) so our brand mark matches
               the upstream desktop app. The file lives in /public so Vite
               serves it as a plain asset. */}
           <div className="flex items-center gap-2.5 flex-shrink-0">
-            <div className="w-8 h-8 rounded-lg bg-white border border-line flex items-center justify-center overflow-hidden">
+            <div className="w-9 h-9 logo-mark flex items-center justify-center overflow-hidden">
               <img
                 src={`${import.meta.env.BASE_URL}kturtle-logo.svg`}
                 alt={t('app.title')}
@@ -575,8 +586,8 @@ export function App() {
             }}
             aria-haspopup="menu"
             aria-expanded={showFileMenu}
-            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 text-[12.5px] rounded-md transition-colors ${
-              showFileMenu ? 'bg-paper-soft text-ink-900' : 'text-ink-700 hover:text-ink-900 hover:bg-paper-soft'
+            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-[12.5px] rounded-lg toolbar-btn ${
+              showFileMenu ? 'bg-paper-soft text-ink-900' : 'text-ink-700 hover:text-ink-900 hover:bg-paper-soft/80'
             }`}
           >
             {t('toolbar.file')}
@@ -630,10 +641,10 @@ export function App() {
           {/* Run / Stop */}
           <button
             onClick={runCode}
-            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-md text-[12.5px] font-medium transition-colors ${
+            className={`flex-shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12.5px] font-semibold toolbar-btn ${
               isRunning
-                ? 'bg-[#fbeee7] text-[#9c3a17] hover:bg-[#f8e2d5]'
-                : 'bg-ink-900 text-paper hover:bg-accent'
+                ? 'bg-[#fbeee7] text-[#9c3a17] hover:bg-[#f8e2d5] border border-[#f1d6cc]'
+                : 'bg-ink-900 text-paper hover:bg-accent btn-run-idle'
             }`}
             title={isRunning ? t('toolbar.stop') : t('toolbar.run') + ' (F5)'}
           >
@@ -656,7 +667,7 @@ export function App() {
 
           <button
             onClick={resetCanvas}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-md transition-colors"
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
             title={t('toolbar.clear')}
           >
             <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
@@ -671,7 +682,7 @@ export function App() {
             style={{ scrollbarWidth: 'none' }}
           >
           {/* Speed slider — continuous, replaces the old dropdown */}
-          <div className="flex-shrink-0 inline-flex items-center gap-2 pl-2.5 pr-2.5 py-1 rounded-md border border-line bg-white">
+          <div className="flex-shrink-0 inline-flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-lg border border-line bg-white/80">
             <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
@@ -683,14 +694,14 @@ export function App() {
               step={1}
               value={speedIdx}
               onChange={e => setSpeedIdx(Number(e.target.value))}
-              className="w-20 accent-accent"
+              className="w-24 speed-slider"
               aria-label={t('toolbar.speed')}
             />
             <span className="text-[11px] text-ink-700 font-mono tab-nums w-14 text-right">{speedLabel}</span>
           </div>
 
           {/* Examples */}
-          <label className="flex-shrink-0 inline-flex items-center gap-1.5 pl-3 pr-1 py-1 rounded-md border border-line bg-white">
+          <label className="flex-shrink-0 inline-flex items-center gap-1.5 pl-3 pr-1 py-1.5 rounded-lg border border-line bg-white/80">
             <span className="text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.examples')}</span>
             <select
               onChange={e => {
@@ -718,7 +729,7 @@ export function App() {
           {/* Color picker */}
           <button
             onClick={() => setShowColorPicker(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-md transition-colors"
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
             title={t('toolbar.colorPicker')}
           >
             <span
@@ -768,11 +779,11 @@ export function App() {
 
             {/* Running indicator */}
             <span
-              className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${
-                isRunning ? 'border-accent/40 text-accent bg-accent-wash' : 'border-line text-ink-500'
+              className={`hidden lg:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border ${
+                isRunning ? 'border-accent/40 text-accent bg-accent-wash' : 'border-line/80 text-ink-500 bg-white/50'
               } text-[11px]`}
             >
-              <span className={`w-1.5 h-1.5 rounded-full ${isRunning ? 'bg-accent animate-pulse' : 'bg-ink-300'}`} />
+              <span className={`w-2 h-2 rounded-full ${isRunning ? 'bg-accent animate-pulse' : 'bg-ink-300'}`} />
               {isRunning ? t('toolbar.drawing') : t('toolbar.ready')}
             </span>
 
@@ -788,10 +799,10 @@ export function App() {
               aria-expanded={showLangMenu}
               aria-label={t('toolbar.language')}
               title={t('toolbar.language')}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border text-[12px] transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[12px] toolbar-btn ${
                 showLangMenu
                   ? 'border-accent text-accent bg-accent-wash/50'
-                  : 'border-line bg-white text-ink-800 hover:border-accent hover:text-accent'
+                  : 'border-line/80 bg-white/80 text-ink-800 hover:border-accent hover:text-accent'
               }`}
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
@@ -855,9 +866,9 @@ export function App() {
         >
           {/* LEFT: Editor */}
           <section className="flex flex-col h-full min-w-0 bg-white border-r border-line">
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-paper-soft/60 flex-shrink-0">
+            <div className="flex items-center justify-between px-4 py-2.5 pane-header flex-shrink-0">
               <div className="flex items-baseline gap-2 min-w-0">
-                <h2 className="text-[12.5px] font-medium text-ink-900 uppercase tracking-[0.1em] truncate">
+                <h2 className="text-[11.5px] font-semibold text-ink-800 uppercase tracking-[0.12em] truncate">
                   {t('pane.editor')}
                 </h2>
                 <span className="text-[11px] text-ink-500 italic truncate">
@@ -900,6 +911,7 @@ export function App() {
                   setCanvasZoomDisplay={setCanvasZoomDisplay}
                   onHideInspector={() => setInspectorVisible(false)}
                   inspectorHidden={false}
+                  isRunning={isRunning}
                 />
                 <InspectorPane
                   errors={errors}
@@ -924,6 +936,7 @@ export function App() {
                 setCanvasZoomDisplay={setCanvasZoomDisplay}
                 onHideInspector={() => setInspectorVisible(true)}
                 inspectorHidden={true}
+                isRunning={isRunning}
               />
             )}
           </div>
@@ -931,8 +944,8 @@ export function App() {
       </main>
 
       {/* ─────────── REFERENCE (collapsed footer strip) ─────────── */}
-      <footer className="flex-shrink-0 border-t border-line bg-paper-soft/60">
-        <div className="px-4 py-1.5 flex items-center justify-between gap-3 text-[11px] text-ink-500">
+      <footer className="flex-shrink-0 app-footer">
+        <div className="px-4 sm:px-5 py-2 flex items-center justify-between gap-3 text-[11px] text-ink-500">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => setShowReference(v => !v)}
@@ -1005,7 +1018,7 @@ export function App() {
           </div>
         </div>
         {showReference && (
-          <div className="border-t border-line bg-white px-4 py-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2 text-[11.5px]">
+          <div className="reference-panel px-4 sm:px-5 py-3 grid grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-2.5 text-[11.5px] anim-rise">
             <RefBlock
               title={t('reference.movement')}
               items={[
@@ -1147,6 +1160,7 @@ function CanvasPane({
   setCanvasZoomDisplay,
   onHideInspector,
   inspectorHidden,
+  isRunning,
 }: {
   canvasRef: React.RefObject<TurtleCanvasHandle | null>;
   turtle: TurtleState;
@@ -1156,13 +1170,14 @@ function CanvasPane({
   setCanvasZoomDisplay: (n: number) => void;
   onHideInspector: () => void;
   inspectorHidden: boolean;
+  isRunning: boolean;
 }) {
   const { t } = useT();
   return (
     <div className="flex flex-col h-full min-w-0 bg-white">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-paper-soft/60 flex-shrink-0">
+      <div className="flex items-center justify-between px-4 py-2.5 pane-header flex-shrink-0">
         <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-[12.5px] font-medium text-ink-900 uppercase tracking-[0.1em] truncate">
+          <h2 className="text-[11.5px] font-semibold text-ink-800 uppercase tracking-[0.12em] truncate">
             {t('pane.canvas')}
           </h2>
           <span className="text-[11px] text-ink-500 italic truncate hidden sm:inline">
@@ -1224,8 +1239,9 @@ function CanvasPane({
           drawings={drawings}
           drawingsLen={drawingsLen}
           onZoomChange={setCanvasZoomDisplay}
+          isRunning={isRunning}
         />
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 pointer-events-none text-[10.5px] text-ink-500 bg-white/70 backdrop-blur px-2 py-0.5 rounded-full border border-line/70">
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 pointer-events-none canvas-zoom-hint">
           {t('canvas.zoomHint')}
         </div>
       </div>

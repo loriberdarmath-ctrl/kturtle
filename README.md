@@ -25,18 +25,18 @@ manager. Pin a specific version with `KTURTLE_VERSION=v0.1.0` before
 the pipe.
 
 On Debian/Ubuntu you can alternatively grab the `.deb` from the
-[Releases page](https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest)
+[Releases page](https://github.com/loriberdarmath-ctrl/kturtle/releases/latest)
 and `sudo dpkg -i` it.
 
 ### Windows
 
-[Download the installer](https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-x64-setup.exe)
+[Download the installer](https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-x64-setup.exe)
 (NSIS, per-user, no admin) or the
-[portable exe](https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-portable.exe).
+[portable exe](https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-portable.exe).
 
 ### Android
 
-[Download the APK](https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-release.apk)
+[Download the APK](https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-release.apk)
 and sideload it (Android 8+). Enable "install unknown apps" for your
 browser first.
 
@@ -46,7 +46,7 @@ browser first.
 
 ### Linux desktop build — in your browser
 
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/loriberdarmath-ctrl/Kturtleweb)
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/loriberdarmath-ctrl/kturtle)
 
 Click the badge, wait ~3 min for the Ubuntu container to boot (first time
 only; subsequent boots take seconds), then:
@@ -74,7 +74,7 @@ the `.AppImage` or `.deb` on their own machine.
 ## Downloads
 
 Pre-built binaries for every release live on the
-[Releases page](https://github.com/loriberdarmath-ctrl/Kturtleweb/releases).
+[Releases page](https://github.com/loriberdarmath-ctrl/kturtle/releases).
 Each release ships two flavours of every asset: a **versioned** file
 (e.g. `KTurtle-v0.1.0-x64-setup.exe`, for provenance) and a
 **stable-named** file (e.g. `KTurtle-x64-setup.exe`, which always
@@ -91,7 +91,7 @@ install script).
 | Android  | `KTurtle-release.apk`                       | Sideload on Android 8+             |
 
 CI rebuilds every target on each `v*` tag — see
-[Actions](https://github.com/loriberdarmath-ctrl/Kturtleweb/actions).
+[Actions](https://github.com/loriberdarmath-ctrl/kturtle/actions).
 
 ---
 

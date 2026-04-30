@@ -149,6 +149,7 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
             zoomDisplay={canvasZoomDisplay}
             setZoomDisplay={setCanvasZoomDisplay}
             t={t}
+            isRunning={isRunning}
           />
         </TabSlot>
 
@@ -690,6 +691,7 @@ function MobileCanvasPane({
   zoomDisplay,
   setZoomDisplay,
   t,
+  isRunning,
 }: {
   canvasRef: RefObject<TurtleCanvasHandle | null>;
   turtle: TurtleState;
@@ -698,6 +700,7 @@ function MobileCanvasPane({
   zoomDisplay: number;
   setZoomDisplay: (n: number) => void;
   t: (k: string, ...a: (string | number)[]) => string;
+  isRunning: boolean;
 }) {
   return (
     <div className="flex flex-col h-full min-w-0 bg-white">
@@ -708,6 +711,7 @@ function MobileCanvasPane({
           drawings={drawings}
           drawingsLen={drawingsLen}
           onZoomChange={setZoomDisplay}
+          isRunning={isRunning}
         />
 
         {/* Floating zoom controls — top-right, thumb-reachable on both

@@ -3,7 +3,7 @@
 # KTurtle — one-line Linux installer
 #
 # Intended invocation:
-#   curl -fsSL https://raw.githubusercontent.com/loriberdarmath-ctrl/Kturtleweb/main/scripts/install-linux.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/loriberdarmath-ctrl/kturtle/main/scripts/install-linux.sh | bash
 #
 # What this script does:
 #   1. Grabs the newest KTurtle-*.AppImage from the latest GitHub release
@@ -29,7 +29,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-REPO="loriberdarmath-ctrl/Kturtleweb"
+REPO="loriberdarmath-ctrl/kturtle"
 APP_NAME="KTurtle"
 BIN_DIR="${HOME}/.local/bin"
 APP_DIR="${HOME}/.local/share/applications"
