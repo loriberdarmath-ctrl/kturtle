@@ -86,7 +86,7 @@ jobs:
   # ──────────────────────────── Linux (.AppImage + .deb) ─────────────────
   linux:
     name: Linux (.AppImage + .deb)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
@@ -106,7 +106,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
             librsvg2-dev \
             patchelf \
             libayatana-appindicator3-dev \
@@ -167,6 +166,10 @@ jobs:
           java-version: "21"
 
       - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK components
+        run: |
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Install npm deps
         run: npm ci
