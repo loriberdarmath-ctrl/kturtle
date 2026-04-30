@@ -6,21 +6,18 @@
   KTurtle landing page
   ─────────────────────────────────────────────────────────────────────────
   Single static HTML page served by GitHub Pages from /docs/. Hand-written
-  CSS only (no framework) for three reasons:
-    • The page needs to feel warm, paper-ish, editorial — not a Tailwind
-      marketing template. Custom CSS is easier when the whole visual idea
-      is "graph paper + IBM Plex serif + one green accent."
-    • Zero build step means the Pages workflow is a one-line "upload docs/".
-    • Page weight stays under ~8 KB (HTML + inline CSS) so it loads before
-      the GitHub spinner finishes on a fresh connection.
+  CSS only (no framework) to keep the page small and the visual identity
+  distinctive (graph paper + IBM Plex serif + one moss-green accent).
 
-  All download links use github.com/<repo>/releases/latest/download/<asset>
-  which 302-redirects to whatever the newest tagged release contains. No
-  JavaScript to fetch the latest version, no maintenance when we cut a new
-  tag.
+  This revision adds a polished light + dark theme. Both share the same
+  accent and typographic system; only the paper/ink scale flips. The
+  current theme is chosen by the user (toggle in the nav), defaulting to
+  the OS preference, and persisted in localStorage. We set data-theme on
+  <html> *before* the stylesheet renders to avoid a flash of wrong theme.
 -->
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<meta name="theme-color" content="#067a07" />
+<meta name="theme-color" content="#f4efe5" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#15130e" media="(prefers-color-scheme: dark)" />
 <meta name="description" content="KTurtle — a quiet place to draw with code. TurtleScript programming environment for learners. Free, offline, open source. Windows, Linux, Android, and web." />
 <meta property="og:title" content="KTurtle — a quiet place to draw with code" />
 <meta property="og:description" content="TurtleScript programming for learners. One codebase, four platforms, fully offline. Free and open source." />
@@ -28,49 +25,106 @@
 <title>KTurtle — a quiet place to draw with code</title>
 <link rel="icon" type="image/svg+xml" href="./kturtle-logo.svg" />
 
-<!--
-  Typography: we pair two old-school-feeling fonts from Google Fonts.
-    • "Fraunces" — a stylistic, soft-serif display face with an unusual
-      gentle chunkiness. It carries the editorial tone. Used only for
-      headlines and "wordmark" touches so the character shows without
-      overstaying.
-    • "IBM Plex Mono" — monospaced, feels like a patient typewriter.
-      Reinforces the "write code, then watch it draw" idea without
-      resorting to the usual "Inter + Fira Code" AI-template pair.
-  Body text is Plex Sans (also from IBM Plex) which ships in the same
-  family so the visual rhythm stays cohesive.
+<!-- Theme bootstrap. Runs synchronously *before* the stylesheet so the
+     correct palette is in place on first paint. -->
+<script>
+  (function () {
+    try {
+      var stored = localStorage.getItem('kturtle-theme');
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var theme = stored || (prefersDark ? 'dark' : 'light');
+      document.documentElement.setAttribute('data-theme', theme);
+    } catch (e) {
+      document.documentElement.setAttribute('data-theme', 'light');
+    }
+  })();
+</script>
 
-  One request, one weight per face — we deliberately don't pull huge
-  weight ranges so the network payload stays tiny.
--->
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link
   href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,700;1,9..144,400&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap"
   rel="stylesheet"
 />
-
 <style>
-  /* ── Design tokens ─────────────────────────────────────────────────────
-     One accent green (lifted straight from the KTurtle logo's gradient)
-     plus a four-step warm paper scale. Everything else is derived. */
-  :root {
-    --ink:          #15130e;   /* body text; warm near-black, not #000 */
-    --ink-soft:     #55503f;   /* captions, helper text */
-    --paper:        #f4efe5;   /* page background — unbleached paper */
-    --paper-soft:   #ece6d6;   /* secondary surfaces */
-    --paper-edge:   #d8cfb8;   /* hairline borders */
-    --moss:         #067a07;   /* primary accent (turtle-shell green) */
-    --moss-deep:    #044a05;   /* hover state on accent */
-    --moss-mist:    #d5e8c7;   /* 10% accent tint for soft fills */
-    --rule:         rgba(21,19,14,0.18);
+  /* ── Design tokens ─────────────────────────────────────────────────
+     Two themes share the same accent ("moss") and typographic system;
+     only the paper/ink scale flips. Every surface, border, and shadow
+     in the page reads from these tokens, so adding a new theme is a
+     one-block change. */
+  :root,
+  [data-theme="light"] {
+    --ink:          #15130e;
+    --ink-soft:     #55503f;
+    --ink-faint:    #8a8270;
+    --paper:        #f4efe5;
+    --paper-soft:   #ece6d6;
+    --paper-edge:   #d8cfb8;
+    --paper-elev:   rgba(255,255,255,0.55);
 
+    --moss:         #067a07;
+    --moss-deep:    #044a05;
+    --moss-mist:    #d5e8c7;
+
+    --rule:         rgba(21,19,14,0.18);
+    --grid-line:    #d8cfb8;
+    --vignette-1:   rgba(244,239,229,0);
+    --vignette-2:   rgba(244,239,229,0.55);
+    --vignette-3:   rgba(212,199,170,0.45);
+
+    --shadow-soft:  rgba(0,0,0,0.06);
+    --btn-shadow:   var(--moss-deep);
+
+    /* The Linux "featured" card stays intentionally darker than the rest
+       of the grid in both themes, so we expose its surface as tokens. */
+    --feature-bg:   #15130e;
+    --feature-fg:   #f4efe5;
+    --feature-rule: rgba(244,239,229,0.18);
+    --feature-soft: rgba(244,239,229,0.06);
+    --feature-mute: rgba(244,239,229,0.72);
+    --feature-mist: var(--moss-mist);
+  }
+
+  [data-theme="dark"] {
+    --ink:          #ece6d6;
+    --ink-soft:     #b5ad96;
+    --ink-faint:    #7a7461;
+    --paper:        #14130f;
+    --paper-soft:   #1d1c17;
+    --paper-edge:   #2c2a23;
+    --paper-elev:   rgba(255,255,255,0.025);
+
+    --moss:         #6cc46d;
+    --moss-deep:    #4ea850;
+    --moss-mist:    #1f3a22;
+
+    --rule:         rgba(236,230,214,0.16);
+    --grid-line:    #232118;
+    --vignette-1:   rgba(20,19,15,0);
+    --vignette-2:   rgba(20,19,15,0.45);
+    --vignette-3:   rgba(0,0,0,0.55);
+
+    --shadow-soft:  rgba(0,0,0,0.45);
+    --btn-shadow:   #0a0a07;
+
+    --feature-bg:   #1d1c17;
+    --feature-fg:   #f4efe5;
+    --feature-rule: rgba(244,239,229,0.14);
+    --feature-soft: rgba(244,239,229,0.04);
+    --feature-mute: rgba(244,239,229,0.7);
+    --feature-mist: var(--moss-mist);
+  }
+
+  :root {
     --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
     --font-body:    "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
     --font-mono:    "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   }
 
-  /* ── Reset + base ──────────────────────────────────────────────────── */
+  html { color-scheme: light dark; }
+  [data-theme="light"] { color-scheme: light; }
+  [data-theme="dark"]  { color-scheme: dark; }
+
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   html { -webkit-text-size-adjust: 100%; }
   body {
@@ -79,49 +133,46 @@
     background: var(--paper);
     line-height: 1.55;
     font-size: 17px;
-    /* Paper texture: a faint graph-paper grid. We use two overlapping
-       linear-gradients instead of an image so the whole page stays under
-       10 KB and scales crisply on any DPR. */
+    /* Graph-paper grid built from two linear-gradients so the page stays
+       crisp at any DPR and weighs nothing. The line color reads from the
+       theme so it lifts on dark mode without clipping. */
     background-image:
-      linear-gradient(var(--paper-edge) 1px, transparent 1px),
-      linear-gradient(90deg, var(--paper-edge) 1px, transparent 1px);
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size: 32px 32px;
     background-position: -1px -1px;
-    /* Slight vignette via radial gradient on ::before keeps the grid from
-       feeling flat / Excel-like (see .paper-vignette below). */
     min-height: 100vh;
     overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
-  /* Warm vignette overlay — graph paper alone is too cold. This softens
-     the edges so the page feels like a real sheet under lamp light. */
   body::before {
     content: "";
     position: fixed; inset: 0;
     background: radial-gradient(ellipse at 50% 40%,
-      rgba(244,239,229,0) 40%,
-      rgba(244,239,229,0.55) 75%,
-      rgba(212,199,170,0.45) 100%);
+      var(--vignette-1) 40%,
+      var(--vignette-2) 75%,
+      var(--vignette-3) 100%);
     pointer-events: none;
     z-index: 0;
+    transition: background 0.25s ease;
   }
 
   main, header, footer { position: relative; z-index: 1; }
 
   a { color: var(--moss); text-decoration: none; }
   a:hover { color: var(--moss-deep); text-decoration: underline; text-underline-offset: 3px; }
+  [data-theme="dark"] a:hover { color: #8edd8f; }
 
-  /* ── Layout shell ──────────────────────────────────────────────────── */
+  ::selection { background: var(--moss-mist); color: var(--ink); }
+
   .wrap {
     max-width: 72rem;
     margin: 0 auto;
     padding: 0 1.5rem;
   }
-
-  /* ── Top nav ───────────────────────────────────────────────────────── */
-  header {
-    padding: 1.75rem 0 0;
-  }
+  /* ── Top nav ──────────────────────────────────────────────────────────── */
+  header { padding: 1.75rem 0 0; }
   .nav {
     display: flex;
     align-items: center;
@@ -140,6 +191,11 @@
   }
   .brand img { width: 32px; height: 32px; display: block; }
   .brand:hover { text-decoration: none; }
+  .nav-right {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.25rem;
+  }
   .nav-links {
     display: flex;
     gap: 1.5rem;
@@ -149,10 +205,48 @@
   .nav-links a { color: var(--ink-soft); }
   .nav-links a:hover { color: var(--moss); text-decoration: none; }
   @media (max-width: 560px) {
-    .nav-links { display: none; } /* logo alone is enough on phones */
+    .nav-links { display: none; }
   }
 
-  /* ── Hero ──────────────────────────────────────────────────────────── */
+  /* Theme toggle: sun/moon icon button. Sized to match nav link metrics
+     so it slots in without disrupting the line. The two icons are stacked
+     and we cross-fade between them by toggling opacity based on
+     data-theme on <html>, which keeps the button itself purely visual. */
+  .theme-toggle {
+    --tt-size: 2.25rem;
+    width: var(--tt-size); height: var(--tt-size);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--paper-edge);
+    background: var(--paper-elev);
+    color: var(--ink-soft);
+    border-radius: 999px;
+    cursor: pointer;
+    position: relative;
+    transition: color 0.18s ease, border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+    font: inherit;
+  }
+  .theme-toggle:hover {
+    color: var(--moss);
+    border-color: var(--moss);
+    transform: rotate(-8deg);
+  }
+  .theme-toggle:focus-visible {
+    outline: 2px solid var(--moss);
+    outline-offset: 2px;
+  }
+  .theme-toggle svg {
+    width: 1.05rem; height: 1.05rem;
+    position: absolute;
+    transition: opacity 0.25s ease, transform 0.25s ease;
+  }
+  .theme-toggle .icon-moon { opacity: 1; transform: rotate(0deg) scale(1); }
+  .theme-toggle .icon-sun  { opacity: 0; transform: rotate(-90deg) scale(0.6); }
+  [data-theme="dark"] .theme-toggle .icon-moon { opacity: 0; transform: rotate(90deg) scale(0.6); }
+  [data-theme="dark"] .theme-toggle .icon-sun  { opacity: 1; transform: rotate(0deg) scale(1); }
+
+  /* ── Hero ──────────────────────────────────────────────────────────────────── */
   .hero {
     padding: 5rem 0 4rem;
     display: grid;
@@ -188,8 +282,6 @@
     line-height: 1.02;
     letter-spacing: -0.02em;
     color: var(--ink);
-    /* Fraunces supports optical sizing; enable it at display sizes for
-       slightly wider terminals and a touch more contrast. */
     font-variation-settings: "opsz" 120;
     margin-bottom: 1.5rem;
   }
@@ -213,15 +305,12 @@
     gap: 0.875rem;
     align-items: center;
   }
-
-  /*
-    Primary button: solid moss block, slab-ish mono label. We use a pseudo-
-    shadow (a lower, offset solid copy) instead of box-shadow so the effect
-    feels like letterpress / linocut, not Material Design.
-  */
+  /* Primary button: solid moss block, slab-ish mono label. The "shadow"
+     is a solid offset square (letterpress feel) rather than a blurred
+     box-shadow — reads as ink, not Material Design. */
   .btn {
     --btn-bg: var(--moss);
-    --btn-fg: var(--paper);
+    --btn-fg: #f4efe5;
     --btn-border: var(--moss-deep);
     display: inline-flex;
     align-items: center;
@@ -236,31 +325,32 @@
     border: 1.5px solid var(--btn-border);
     border-radius: 2px;
     position: relative;
-    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out;
-    box-shadow: 3px 3px 0 var(--btn-border);
+    transition: transform 0.12s ease-out, box-shadow 0.12s ease-out, background 0.18s ease;
+    box-shadow: 3px 3px 0 var(--btn-shadow);
     cursor: pointer;
   }
   .btn:hover {
     transform: translate(-1px, -1px);
-    box-shadow: 4px 4px 0 var(--btn-border);
+    box-shadow: 4px 4px 0 var(--btn-shadow);
     text-decoration: none;
     color: var(--btn-fg);
   }
   .btn:active {
     transform: translate(2px, 2px);
-    box-shadow: 1px 1px 0 var(--btn-border);
+    box-shadow: 1px 1px 0 var(--btn-shadow);
   }
   .btn.ghost {
     --btn-bg: transparent;
     --btn-fg: var(--ink);
     --btn-border: var(--ink);
   }
+  [data-theme="dark"] .btn.ghost {
+    --btn-fg: var(--ink);
+    --btn-border: var(--ink-soft);
+  }
   .btn svg { width: 1em; height: 1em; flex-shrink: 0; }
 
-  /* ── Hero illustration: a CSS turtle drawing a square on a grid ─────
-     Pure HTML+CSS. The turtle is the logo SVG; the "drawing" is four
-     animated strokes that trace a square. Reinforces the core idea
-     ("write code → it draws") without video or heavyweight canvas. */
+  /* ── Hero illustration ─────────────────────────────────────────────────── */
   .turtle-stage {
     position: relative;
     aspect-ratio: 1 / 1;
@@ -268,19 +358,17 @@
     max-width: 380px;
     margin: 0 auto;
     border: 1.5px solid var(--paper-edge);
-    background: rgba(255,255,255,0.5);
+    background: var(--paper-elev);
     border-radius: 4px;
     overflow: hidden;
-    /* A lighter sub-grid inside the stage so it reads as a "drawing
-       canvas" separate from the page's background grid. */
     background-image:
-      linear-gradient(rgba(85,80,63,0.08) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(85,80,63,0.08) 1px, transparent 1px);
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
     background-size: 24px 24px;
+    box-shadow: 0 1px 0 var(--shadow-soft), 0 12px 32px -16px var(--shadow-soft);
+    transition: background 0.25s ease, border-color 0.25s ease;
   }
   .turtle-stage::after {
-    /* Corner label: 'canvas 320×320' in the bottom right. Mono + small
-       caps, like a ruler reading. */
     content: "canvas";
     position: absolute;
     bottom: 0.5rem; right: 0.625rem;
@@ -312,15 +400,9 @@
   @keyframes drawStroke {
     0%, 10% { stroke-dashoffset: 280; }
     35%     { stroke-dashoffset: 0; }
-    /* Hold finished line, then fade out as the next stroke starts. */
     85%     { stroke-dashoffset: 0; opacity: 1; }
     100%    { stroke-dashoffset: 0; opacity: 0; }
   }
-  /* Small pen-dot riding the perimeter. 10px circle in the accent moss
-     green, with a soft halo so it reads as "ink laid down on paper."
-     We centre the element by pulling it back 5px (half its size) via
-     transform — that way the top/left coordinates reference the dot's
-     geometric centre, which matches the corners of the square. */
   .pen-dot {
     position: absolute;
     width: 10px; height: 10px;
@@ -328,14 +410,12 @@
     border-radius: 50%;
     background: var(--moss);
     box-shadow:
-      0 0 0 3px rgba(6,122,7,0.18),
-      0 1px 2px rgba(0,0,0,0.12);
+      0 0 0 3px color-mix(in srgb, var(--moss) 22%, transparent),
+      0 1px 2px rgba(0,0,0,0.18);
     top: 26%; left: 26%;
     animation: penWalk 24s linear infinite;
   }
   @keyframes penWalk {
-    /* Path: four edges of the same centred square the lines trace.
-       Each side takes 25% of the 24s cycle (6s per side). */
     0%   { top: 26%; left: 26%; }
     25%  { top: 26%; left: 74%; }
     50%  { top: 74%; left: 74%; }
@@ -347,7 +427,14 @@
     .pen-dot       { animation: none; top: 26%; left: 26%; }
   }
 
-  /* ── Section rhythm ─────────────────────────────────────────────────── */
+  .hint {
+    margin-top: 1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8125rem;
+    color: var(--ink-soft);
+    letter-spacing: 0.02em;
+  }
+  /* ── Section rhythm ───────────────────────────────────────────────────────── */
   .section {
     padding: 4rem 0;
     border-top: 1px solid var(--rule);
@@ -377,10 +464,7 @@
     color: var(--ink-soft);
   }
 
-  /* ── Download cards grid ─────────────────────────────────────────────
-     Four platforms. Each card is a bordered "specimen" with the platform
-     name as a display typographic headline, a mono command/filename
-     below, and a primary action. Inspired by technical-manual layouts. */
+  /* ── Download cards grid ────────────────────────────────────────────────── */
   .platform-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
@@ -399,11 +483,12 @@
     flex-direction: column;
     min-height: 18rem;
     overflow: hidden;
-    transition: transform 0.18s ease, border-color 0.18s ease;
+    transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease, background 0.25s ease;
   }
   .platform:hover {
     transform: translateY(-2px);
     border-color: var(--moss);
+    box-shadow: 0 8px 24px -16px var(--shadow-soft);
   }
   .platform-tag {
     font-family: var(--font-mono);
@@ -441,20 +526,15 @@
     font-family: var(--font-mono);
     font-size: 0.8125rem;
     color: var(--ink);
-    background: rgba(255,255,255,0.55);
+    background: var(--paper-elev);
     border: 1px dashed var(--paper-edge);
     padding: 0.5rem 0.75rem;
     border-radius: 2px;
     margin-bottom: 1rem;
     word-break: break-all;
   }
-  .platform .dl {
-    margin-top: auto;
-  }
-  .platform .dl .btn {
-    width: 100%;
-    justify-content: center;
-  }
+  .platform .dl { margin-top: auto; }
+  .platform .dl .btn { width: 100%; justify-content: center; }
   .platform .alt {
     display: block;
     margin-top: 0.75rem;
@@ -466,31 +546,29 @@
   .platform .alt a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
   .platform .alt a:hover { color: var(--moss); }
 
-  /*
-    Linux card gets a featured treatment: its "one-line install" snippet
-    is the visual centerpiece since Linux is the path we want people to
-    take. Slightly larger, with a copy button.
-  */
+  /* Linux card: featured "dark terminal" treatment in both themes. The
+     surface tokens come from --feature-* which both themes set, so the
+     contrast against its surroundings is preserved when the page flips. */
   .platform.linux {
     grid-column: span 2;
-    background: var(--ink);
-    border-color: var(--ink);
-    color: var(--paper);
+    background: var(--feature-bg);
+    border-color: var(--feature-bg);
+    color: var(--feature-fg);
   }
   @media (max-width: 560px) { .platform.linux { grid-column: span 1; } }
-  .platform.linux h3         { color: var(--paper); }
-  .platform.linux .platform-tag { color: var(--moss-mist); }
-  .platform.linux p          { color: rgba(244,239,229,0.72); }
-  .platform.linux .snippet   {
+  .platform.linux h3            { color: var(--feature-fg); }
+  .platform.linux .platform-tag { color: var(--feature-mist); }
+  .platform.linux p             { color: var(--feature-mute); }
+  .platform.linux .snippet {
     position: relative;
-    background: rgba(244,239,229,0.06);
-    border: 1px solid rgba(244,239,229,0.18);
+    background: var(--feature-soft);
+    border: 1px solid var(--feature-rule);
     border-radius: 2px;
     padding: 0.875rem 2.75rem 0.875rem 0.875rem;
     margin-bottom: 1.25rem;
     font-family: var(--font-mono);
     font-size: 0.8125rem;
-    color: var(--paper);
+    color: var(--feature-fg);
     line-height: 1.45;
     overflow: auto;
     white-space: pre;
@@ -500,9 +578,9 @@
     position: absolute;
     top: 0.5rem; right: 0.5rem;
     width: 1.875rem; height: 1.875rem;
-    border: 1px solid rgba(244,239,229,0.25);
+    border: 1px solid var(--feature-rule);
     background: transparent;
-    color: var(--paper);
+    color: var(--feature-fg);
     border-radius: 2px;
     cursor: pointer;
     display: inline-flex;
@@ -510,17 +588,10 @@
     justify-content: center;
     transition: background 0.15s ease, border-color 0.15s ease;
   }
-  .platform.linux .copy-btn:hover {
-    background: rgba(244,239,229,0.12);
-    border-color: var(--moss);
-  }
+  .platform.linux .copy-btn:hover { background: var(--feature-soft); border-color: var(--moss); }
   .platform.linux .copy-btn svg { width: 0.9rem; height: 0.9rem; }
   .platform.linux .copy-btn.copied { color: var(--moss); border-color: var(--moss); }
-
-  /* ── About section ──────────────────────────────────────────────────
-     Two-column editorial block. Left: running prose. Right: a literal
-     code sample of TurtleScript — so visitors see what programming in
-     the app actually looks like. */
+  /* ── About ──────────────────────────────────────────────────────────────────── */
   .about {
     display: grid;
     grid-template-columns: 1.1fr 0.9fr;
@@ -537,7 +608,6 @@
     max-width: 38ch;
   }
   .about p.drop::first-letter {
-    /* Proper drop cap. Only fires on the first paragraph with .drop. */
     font-family: var(--font-display);
     font-weight: 700;
     float: left;
@@ -549,12 +619,6 @@
   }
   .about p strong { color: var(--ink); }
 
-  /*
-    Credit to the original KTurtle project. A sidebar-ish block set off
-    from the running prose with a left rule (newspaper "editor's note"
-    style). Smaller type + mono label reinforces that this is factual
-    attribution, not marketing copy.
-  */
   .credit {
     margin-top: 2rem;
     padding: 1rem 0 0.25rem 1.25rem;
@@ -587,33 +651,46 @@
   .credit .credit-links a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
   .credit .credit-links a:hover { color: var(--moss); }
 
+  /* Code sample stays "dark terminal" in both themes for legibility, like
+     the Linux card. We pull surface from --feature-* so all dark slabs
+     stay visually consistent when the theme changes. */
   pre.sample {
     font-family: var(--font-mono);
     font-size: 0.9rem;
     line-height: 1.65;
-    background: var(--ink);
-    color: var(--paper);
+    background: var(--feature-bg);
+    color: var(--feature-fg);
     padding: 1.25rem 1.5rem;
     border-radius: 4px;
     overflow: auto;
     position: relative;
     box-shadow: 6px 6px 0 var(--moss-mist);
+    border: 1px solid var(--feature-rule);
   }
-  pre.sample .kw  { color: #f2c66d; }       /* keyword: repeat, forward */
-  pre.sample .num { color: var(--moss-mist); } /* numbers */
-  pre.sample .cm  { color: #9a9486; font-style: italic; } /* comments */
+  pre.sample .kw  { color: #f2c66d; }
+  pre.sample .num { color: #b8e0a3; }
+  pre.sample .cm  { color: #9a9486; font-style: italic; }
 
-  /* ── Features (three pillars) ───────────────────────────────────── */
+  /* ── Pillars ───────────────────────────────────────────────────────────── */
   .pillars {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 2rem;
   }
   @media (max-width: 800px) { .pillars { grid-template-columns: 1fr; gap: 1.5rem; } }
+  .pillar {
+    padding: 1.5rem 1.5rem 1.25rem;
+    background: var(--paper-soft);
+    border: 1px solid var(--paper-edge);
+    border-radius: 3px;
+    transition: border-color 0.18s ease, transform 0.18s ease, background 0.25s ease;
+  }
+  .pillar:hover { border-color: var(--moss); transform: translateY(-2px); }
   .pillar h4 {
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.25rem;
+    color: var(--ink);
     margin-bottom: 0.5rem;
     display: flex;
     align-items: baseline;
@@ -629,13 +706,22 @@
     border-radius: 2px;
     letter-spacing: 0.08em;
   }
+  [data-theme="dark"] .pillar h4 .num { color: #cbe7c4; }
   .pillar p {
     font-size: 0.9375rem;
     color: var(--ink-soft);
     line-height: 1.6;
   }
+  .pillar code {
+    font-family: var(--font-mono);
+    color: var(--ink);
+    background: var(--paper-elev);
+    padding: 0.05rem 0.3rem;
+    border-radius: 2px;
+    font-size: 0.875em;
+  }
 
-  /* ── Footer ─────────────────────────────────────────────────────── */
+  /* ── Footer ────────────────────────────────────────────────────────────── */
   footer {
     padding: 3rem 0 2.5rem;
     border-top: 1px solid var(--rule);
@@ -650,12 +736,11 @@
   }
   footer a { color: var(--ink-soft); text-decoration: underline; text-underline-offset: 3px; }
   footer a:hover { color: var(--moss); }
-  footer .mark {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-  }
-  footer .mark img { width: 18px; height: 18px; opacity: 0.7; }
+  footer .mark { display: inline-flex; align-items: center; gap: 0.5rem; }
+  footer .mark img { width: 18px; height: 18px; opacity: 0.8; }
+  [data-theme="dark"] footer .mark img { filter: brightness(1.1); }
 
-  /* ── Entrance animation — one orchestrated load ─────────────────── */
+  /* ── Entrance animation ─────────────────────────────────────────────────── */
   .fade-up {
     opacity: 0;
     transform: translateY(16px);
@@ -665,15 +750,13 @@
   .fade-up.d2 { animation-delay: 0.3s; }
   .fade-up.d3 { animation-delay: 0.45s; }
   .fade-up.d4 { animation-delay: 0.6s; }
-  @keyframes fadeUp {
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes fadeUp { to { opacity: 1; transform: translateY(0); } }
   @media (prefers-reduced-motion: reduce) {
     .fade-up { animation: none; opacity: 1; transform: none; }
+    body, body::before, .platform, .pillar, .turtle-stage, .theme-toggle, .theme-toggle svg { transition: none !important; }
   }
 </style>
-</head>
-<body>
+</head><body>
 
 <div class="wrap">
   <header>
@@ -682,17 +765,32 @@
         <img src="./kturtle-logo.svg" alt="" />
         <span>KTurtle</span>
       </a>
-      <div class="nav-links">
-        <a href="/app">Try online</a>
-        <a href="#download">Download</a>
-        <a href="#about">About</a>
-        <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a>
+      <div class="nav-right">
+        <div class="nav-links">
+          <a href="/app">Try online</a>
+          <a href="#download">Download</a>
+          <a href="#about">About</a>
+          <a href="https://github.com/loriberdarmath-ctrl/kturtle">GitHub</a>
+        </div>
+        <!-- Theme toggle. The aria-label is rewritten in JS to reflect the
+             *next* state ("Switch to light/dark theme") so screen readers
+             announce the action, not the current value. -->
+        <button id="theme-toggle" class="theme-toggle" type="button"
+                aria-label="Switch theme" title="Switch theme">
+          <svg class="icon-moon" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <path d="M16.5 12.5A7 7 0 017.5 3.5a7 7 0 109 9z" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <svg class="icon-sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true">
+            <circle cx="10" cy="10" r="3.5"/>
+            <path d="M10 1.5v2M10 16.5v2M1.5 10h2M16.5 10h2M4 4l1.4 1.4M14.6 14.6L16 16M4 16l1.4-1.4M14.6 5.4L16 4" stroke-linecap="round"/>
+          </svg>
+        </button>
       </div>
     </nav>
   </header>
 
   <main>
-    <!-- ── Hero ─────────────────────────────────────────────────────── -->
+    <!-- ── Hero ────────────────────────────────────────────────────────────────────────── -->
     <section class="hero">
       <div>
         <div class="eyebrow fade-up">Turtle graphics · for learners</div>
@@ -705,11 +803,6 @@
           codebase — four places to run it.
         </p>
         <div class="cta-row fade-up d3">
-          <!--
-            Primary CTA is now the hosted web app (same origin, so no
-            external redirect). The download path is a secondary option
-            for offline users.
-          -->
           <a class="btn" href="/app">
             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true">
               <path d="M5 4l10 6-10 6V4z" stroke-linecap="round" stroke-linejoin="round"/>
@@ -722,37 +815,26 @@
             </svg>
             Or download
           </a>
-          <a class="btn ghost" href="https://github.com/loriberdarmath-ctrl/Kturtleweb" aria-label="View source on GitHub" style="padding-left: 0.75rem; padding-right: 0.75rem;">
+          <a class="btn ghost" href="https://github.com/loriberdarmath-ctrl/kturtle" aria-label="View source on GitHub" style="padding-left: 0.75rem; padding-right: 0.75rem;">
             <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path d="M10 .3a10 10 0 00-3.16 19.48c.5.1.68-.22.68-.48v-1.69c-2.78.6-3.37-1.34-3.37-1.34-.46-1.16-1.12-1.47-1.12-1.47-.91-.63.07-.62.07-.62 1 .07 1.53 1.03 1.53 1.03.89 1.53 2.34 1.09 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.56-1.11-4.56-4.95 0-1.1.39-1.99 1.03-2.69-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.03a9.55 9.55 0 015 0c1.91-1.3 2.75-1.03 2.75-1.03.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.69 0 3.85-2.34 4.7-4.57 4.95.36.31.68.92.68 1.85v2.74c0 .27.18.58.69.48A10 10 0 0010 .3z"/>
             </svg>
           </a>
         </div>
-        <p class="hint fade-up d3" style="margin-top:1rem; font-family:var(--font-mono); font-size:0.8125rem; color:var(--ink-soft); letter-spacing:0.02em;">
-          No install, no account. Runs entirely in your browser.
-        </p>
+        <p class="hint fade-up d3">No install, no account. Runs entirely in your browser.</p>
       </div>
 
-      <!-- CSS-animated square being drawn. The turtle cursor itself used
-           to ride along here; removed to keep the composition focused on
-           the drawing act rather than the mascot. A small "pen dot"
-           traces the path instead, which feels quieter and doesn't
-           duplicate the brand mark in the nav. -->
       <div class="turtle-stage fade-up d4" aria-hidden="true">
         <svg class="turtle-svg" viewBox="0 0 400 400" preserveAspectRatio="none">
-          <!-- Four edges of a centred square. Each trace animates in turn. -->
           <line class="turtle-stroke" x1="104" y1="104" x2="296" y2="104" />
           <line class="turtle-stroke" x1="296" y1="104" x2="296" y2="296" />
           <line class="turtle-stroke" x1="296" y1="296" x2="104" y2="296" />
           <line class="turtle-stroke" x1="104" y1="296" x2="104" y2="104" />
         </svg>
-        <!-- Tiny pen-tip that moves along the square's perimeter, keeping
-             the sense of a turtle drawing without showing the logo. -->
         <span class="pen-dot"></span>
       </div>
     </section>
-
-    <!-- ── Downloads ───────────────────────────────────────────────── -->
+    <!-- ── Downloads ──────────────────────────────────────────────────────────── -->
     <section class="section" id="download">
       <div class="section-head">
         <h2>Get KTurtle</h2>
@@ -761,7 +843,6 @@
 
       <div class="platform-grid">
 
-        <!-- ── Linux: featured card with copy-paste install ─────────── -->
         <article class="platform linux">
           <div class="platform-tag">Linux · recommended</div>
           <h3>One-line install</h3>
@@ -778,55 +859,52 @@
   </svg>
 </button></div>
           <div class="dl">
-            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-linux-x86_64.AppImage">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-linux-x86_64.AppImage">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Or download .AppImage directly
             </a>
-            <span class="alt" style="color:rgba(244,239,229,0.6);">
+            <span class="alt" style="color:var(--feature-mute);">
               Debian/Ubuntu?
-              <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest" style="color:var(--moss-mist);">.deb available →</a>
+              <a href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest" style="color:var(--feature-mist);">.deb available →</a>
             </span>
           </div>
         </article>
 
-        <!-- ── Windows ──────────────────────────────────────────────── -->
         <article class="platform">
           <div class="platform-tag">Windows 10+</div>
           <h3>Installer</h3>
           <p>Per-user install. No admin required. ~4 MB.</p>
           <div class="file">KTurtle-x64-setup.exe</div>
           <div class="dl">
-            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-x64-setup.exe">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-x64-setup.exe">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Download .exe
             </a>
             <span class="alt">
-              or <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-portable.exe">portable build</a>
+              or <a href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-portable.exe">portable build</a>
             </span>
           </div>
         </article>
 
-        <!-- ── Android ──────────────────────────────────────────────── -->
         <article class="platform">
           <div class="platform-tag">Android 8+</div>
           <h3>APK (sideload)</h3>
           <p>Enable "install unknown apps" for your browser, then open the file.</p>
           <div class="file">KTurtle-release.apk</div>
           <div class="dl">
-            <a class="btn" href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-release.apk">
+            <a class="btn" href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-release.apk">
               <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" aria-hidden="true"><path d="M10 2v12m0 0l-4-4m4 4l4-4M3 17h14" stroke-linecap="round" stroke-linejoin="round"/></svg>
               Download .apk
             </a>
             <span class="alt">
-              or <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases/latest/download/KTurtle-debug.apk">debug build</a>
+              or <a href="https://github.com/loriberdarmath-ctrl/kturtle/releases/latest/download/KTurtle-debug.apk">debug build</a>
             </span>
           </div>
         </article>
 
       </div>
     </section>
-
-    <!-- ── About ───────────────────────────────────────────────────── -->
+    <!-- ── About ─────────────────────────────────────────────────────────────────── -->
     <section class="section" id="about">
       <div class="section-head">
         <h2>What is it?</h2>
@@ -852,18 +930,9 @@
           <p>
             Free and open source under the GPL. Pull requests and bug
             reports welcome on
-            <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a>.
+            <a href="https://github.com/loriberdarmath-ctrl/kturtle">GitHub</a>.
           </p>
 
-          <!--
-            Attribution to the original KTurtle project. Honouring upstream
-            is non-negotiable here: the name, the pedagogy, and the whole
-            idea of a Logo-style teaching environment come from the KDE
-            project. This page ships as a reimplementation — same spirit,
-            new platforms — and we want visitors to know where the
-            lineage starts. Authors listed are the primary maintainers
-            credited in the upstream KTurtle repository on invent.kde.org.
-          -->
           <aside class="credit" aria-label="Credit to the original KTurtle">
             <span class="credit-label">In the lineage of</span>
             <p>
@@ -882,14 +951,6 @@
           </aside>
         </div>
 
-        <!--
-          Live sample of TurtleScript. Hand-tokenised so we don't pull a
-          syntax highlighter (would double the page weight). Colours match
-          the design system. Chose a small recursive fractal because it
-          shows off what the language is actually good for — self-similar
-          drawings produced by a handful of commands — rather than a
-          five-line toy example.
-        -->
         <pre class="sample" aria-label="Sample KTurtle program"><span class="cm"># Tree — a recursive fractal tree</span>
 
 <span class="kw">reset</span>
@@ -916,8 +977,7 @@
 branch <span class="num">100</span></pre>
       </div>
     </section>
-
-    <!-- ── Three pillars ───────────────────────────────────────────── -->
+    <!-- ── Three pillars ──────────────────────────────────────────────────────── -->
     <section class="section">
       <div class="section-head">
         <h2>Why this one</h2>
@@ -930,8 +990,7 @@ branch <span class="num">100</span></pre>
             Fonts, icons, and the interpreter are bundled with the binary.
             Install once, fly across the world with no signal, and the app
             still draws. The Android build doesn't even request
-            <code style="font-family:var(--font-mono); color:var(--ink);">INTERNET</code>
-            permission.
+            <code>INTERNET</code> permission.
           </p>
         </div>
         <div class="pillar">
@@ -961,43 +1020,79 @@ branch <span class="num">100</span></pre>
     </span>
     <span>
       After the <a href="https://edu.kde.org/kturtle/">KDE KTurtle</a> ·
-      <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb">GitHub</a> ·
-      <a href="https://github.com/loriberdarmath-ctrl/Kturtleweb/releases">Releases</a>
+      <a href="https://github.com/loriberdarmath-ctrl/kturtle">GitHub</a> ·
+      <a href="https://github.com/loriberdarmath-ctrl/kturtle/releases">Releases</a>
     </span>
   </footer>
 </div>
-
 <script>
-  // One-line install snippet: copy-to-clipboard button.
-  // Progressive enhancement — the snippet is readable/selectable without
-  // JS; the button just removes a step for sighted mouse users.
+  // ── Theme toggle ─────────────────────────────────────────────────────────────
+  // The initial theme is set in <head> before paint to avoid a flash. Here
+  // we just wire the button + persist the new choice. We also follow the
+  // OS preference when the user hasn't made a manual choice yet, so the
+  // page tracks system theme switches in real time.
   (function () {
-    const btn = document.getElementById('copy-btn');
-    const snippet = document.getElementById('install-snippet');
+    var root = document.documentElement;
+    var btn  = document.getElementById('theme-toggle');
+    if (!btn) return;
+
+    function announce() {
+      var current = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      btn.setAttribute('aria-label', 'Switch to ' + next + ' theme');
+      btn.setAttribute('title', 'Switch to ' + next + ' theme');
+    }
+    announce();
+
+    btn.addEventListener('click', function () {
+      var current = root.getAttribute('data-theme') === 'dark' ? 'dark' : 'light';
+      var next = current === 'dark' ? 'light' : 'dark';
+      root.setAttribute('data-theme', next);
+      try { localStorage.setItem('kturtle-theme', next); } catch (e) {}
+      announce();
+    });
+
+    // If the user hasn't picked a theme yet, follow the OS.
+    if (window.matchMedia) {
+      var mq = window.matchMedia('(prefers-color-scheme: dark)');
+      var onChange = function (e) {
+        var stored = null;
+        try { stored = localStorage.getItem('kturtle-theme'); } catch (err) {}
+        if (!stored) {
+          root.setAttribute('data-theme', e.matches ? 'dark' : 'light');
+          announce();
+        }
+      };
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+      else if (mq.addListener) mq.addListener(onChange);
+    }
+  })();
+
+  // ── Copy install command ────────────────────────────────────────────────────────
+  // Progressive enhancement — the snippet stays selectable without JS.
+  (function () {
+    var btn = document.getElementById('copy-btn');
+    var snippet = document.getElementById('install-snippet');
     if (!btn || !snippet || !navigator.clipboard) return;
 
-    // Grab the command text (strip the $ prompt and the button's own text).
-    const cmd = snippet.childNodes[1].textContent.trim();
+    var cmd = snippet.childNodes[1].textContent.trim();
 
-    btn.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(cmd);
+    btn.addEventListener('click', function () {
+      navigator.clipboard.writeText(cmd).then(function () {
         btn.classList.add('copied');
-        const original = btn.innerHTML;
+        var original = btn.innerHTML;
         btn.innerHTML = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 10l4 4 8-8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-        setTimeout(() => {
+        setTimeout(function () {
           btn.classList.remove('copied');
           btn.innerHTML = original;
         }, 1800);
-      } catch (err) {
-        // Clipboard API can fail on http:// or in sandboxed iframes;
-        // fall back to selecting the text so the user can Cmd/Ctrl+C.
-        const range = document.createRange();
+      }).catch(function () {
+        var range = document.createRange();
         range.selectNodeContents(snippet);
-        const sel = window.getSelection();
+        var sel = window.getSelection();
         sel.removeAllRanges();
         sel.addRange(range);
-      }
+      });
     });
   })();
 </script>
