@@ -184,6 +184,13 @@ jobs:
         working-directory: android
         run: ./gradlew assembleDebug
 
+      - name: Generate release keystore
+        run: |
+          keytool -genkeypair -v -keystore android/app/kturtle-release.keystore \
+            -alias kturtle -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass kturtle123 -keypass kturtle123 \
+            -dname "CN=KTurtle, OU=Dev, O=KTurtle, L=Unknown, ST=Unknown, C=US"
+
       - name: Build release APK
         # Uses the committed self-signed keystore + hardcoded password in
         # android/app/build.gradle. Swap this out with a Play-grade
