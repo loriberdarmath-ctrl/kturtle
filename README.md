@@ -6,8 +6,8 @@ an Android app, from one React codebase.
 
 by Narek Balayan
 
-**→ Try it online: [kturtleweb-ten.vercel.app](https://kturtleweb-ten.vercel.app/)**
-**→ About & downloads: [kturtleweb-ten.vercel.app/about](https://kturtleweb-ten.vercel.app/about)**
+**→ Try it online: [kturtle-seven.vercel.app](https://kturtle-seven.vercel.app/)**
+**→ About & downloads: [kturtle-seven.vercel.app/about](https://kturtle-seven.vercel.app/about)**
 
 ---
 
@@ -16,7 +16,7 @@ by Narek Balayan
 ### Linux — one line
 
 ```bash
-curl -fsSL https://kturtleweb-ten.vercel.app/_install.sh | bash
+curl -fsSL https://kturtle-seven.vercel.app/_install.sh | bash
 ```
 
 Downloads the latest `.AppImage`, drops it in `~/.local/bin`, registers
@@ -137,7 +137,7 @@ committed-ish — see below). From this folder:
 ```bash
 npm i -g vercel           # one-time
 vercel login              # one-time, use the GitHub account you own the project with
-vercel --prod             # ship to kturtleweb-ten.vercel.app
+vercel --prod             # ship to kturtle-seven.vercel.app
 ```
 
 The deploy runs `npm run build` (producing the single-file Vite bundle
