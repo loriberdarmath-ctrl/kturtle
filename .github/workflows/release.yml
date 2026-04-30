@@ -169,20 +169,13 @@ jobs:
 
       - name: Install Android SDK components
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
       - name: Install npm deps
         run: npm ci
 
       - name: Sync Capacitor Android project
         run: npm run android:sync
-
-      - name: Patch lintOptions for AGP 8.13 compat
-        run: |
-          grep -rl 'lintOptions' node_modules/ android/ --include='*.gradle' 2>/dev/null | while read f; do
-            echo "Patching $f"
-            sed -i 's/lintOptions/lint/g' "$f"
-          done
 
       - name: Fix gradlew permissions
         run: chmod +x android/gradlew
