@@ -86,6 +86,25 @@ mv "${TARGET}.tmp" "${TARGET}"
 chmod +x "${TARGET}"
 ok "Installed binary: ${TARGET}"
 
+# Tiny wrapper so running from a terminal picks up the same env vars we
+# set in the .desktop entry. Users typing `KTurtle` in their shell get
+# the WebKitGTK fallback renderer without having to know it exists.
+WRAPPER="${BIN_DIR}/${APP_NAME}"
+cat > "${WRAPPER}" <<EOF
+#!/usr/bin/env bash
+# KTurtle launcher. Forces WebKitGTK onto the GLX/software path so the
+# AppImage works on older Intel GPUs (Haswell, Ivy Bridge) and on any
+# X11 system whose EGL stack does not cooperate with the DMA-BUF
+# renderer WebKitGTK 2.42+ now defaults to. See lib.rs for the same
+# shim on the Rust side.
+export WEBKIT_DISABLE_DMABUF_RENDERER="\${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
+export WEBKIT_DISABLE_COMPOSITING_MODE="\${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+exec "${TARGET}" "\$@"
+EOF
+chmod +x "${WRAPPER}"
+ok "Installed launcher:  ${WRAPPER}"
+
+
 # ── Extract the icon from inside the AppImage ────────────────────────────────
 # AppImages are squashfs archives. `--appimage-extract` unpacks the whole
 # tree to ./squashfs-root; we grab the 256×256 icon, then nuke the tree.
@@ -117,7 +136,7 @@ Type=Application
 Name=${APP_NAME}
 GenericName=Turtle Graphics Programming
 Comment=A quiet place to draw with code
-Exec=${TARGET} %U
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 ${TARGET} %U
 Icon=kturtle
 Terminal=false
 Categories=Education;Development;Graphics;
