@@ -6,8 +6,8 @@ an Android app, from one React codebase.
 
 by Narek Balayan
 
-**→ Try it online: [kturtle-seven.vercel.app](https://kturtle-seven.vercel.app/)**
-**→ About & downloads: [kturtle-seven.vercel.app/about](https://kturtle-seven.vercel.app/about)**
+**→ Try it online: [kturtle.vercel.app](https://kturtle.vercel.app/)**
+**→ About & downloads: [kturtle.vercel.app/about](https://kturtle.vercel.app/#about)**
 
 ---
 
