@@ -629,6 +629,24 @@ const MobileSpeedDial = memo(function MobileSpeedDial({
   };
 
   return (
+    // Flex-1 so the slider soaks up whatever width the Run / More
+    // buttons leave behind. On a 360 px phone that's ~180 px, enough
+    // for the thumb to travel meaningfully without the label ever
+    // truncating.
+    //
+    // Two notes worth keeping:
+    //   • `touchAction: 'none'` and Tailwind's `touch-none` used to sit on
+    //     the <input>. On Android WebView that blocks the native slider
+    //     drag entirely — the browser never forwards the touch to the
+    //     range input's internal handler. We drop both and let the
+    //     default gesture handling work, which also fixes the "thumb
+    //     won't move" bug users hit on phones.
+    //   • The trailing label is now a compact "3/6" fraction instead of
+    //     a translated word. Words like "Very slow" / "Быстро" / "Արագ"
+    //     used to overflow on narrow phones and clip the slider; a
+    //     fraction is locale-independent and stays at a predictable
+    //     width. The full word is still exposed via `aria-valuetext`
+    //     for screen readers.
     <label className="flex-1 min-w-0 inline-flex items-center gap-2 h-11 px-3 rounded-full border border-line bg-paper-soft">
       <svg className="w-3.5 h-3.5 text-ink-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
         <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -643,12 +661,15 @@ const MobileSpeedDial = memo(function MobileSpeedDial({
         onPointerUp={commitNow}
         onPointerCancel={commitNow}
         onKeyUp={commitNow}
-        className="flex-1 min-w-0 accent-accent touch-none"
-        style={{ touchAction: 'none' }}
+        className="flex-1 min-w-0 accent-accent"
         aria-label={t('toolbar.speed')}
+        aria-valuetext={speedLabel}
       />
-      <span className="text-[11px] font-mono tab-nums text-ink-700 text-right flex-shrink-0 truncate max-w-[70px]">
-        {speedLabel}
+      <span
+        className="text-[11px] font-mono tab-nums text-ink-600 text-right flex-shrink-0 w-9"
+        aria-hidden
+      >
+        {localIdx}/{speedStepsLen - 1}
       </span>
     </label>
   );

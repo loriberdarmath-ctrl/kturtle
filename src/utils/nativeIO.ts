@@ -3,16 +3,21 @@
 //   • Web browser  — uses <a download>/<input type=file> (existing
 //                    behaviour; nothing to install or ask permission for).
 //   • Tauri desktop — real native Save As / Open dialogs, real fs writes.
-//                    The user picks the directory and name themselves;
-//                    files land wherever they expect them to, not in
-//                    Downloads/.
-//   • Capacitor Android — writes to the shared Documents/KTurtle folder
-//                    (or Pictures/KTurtle for PNGs) using the Filesystem
-//                    plugin, then opens the system share sheet so the
-//                    user can send / rename / move the file. Opening a
-//                    .turtle file falls back to an <input type=file>
-//                    picker inside the webview because Capacitor doesn't
-//                    ship a native "open document" dialog.
+//                    Pre-seeds the Save dialog with the OS Downloads
+//                    folder so Windows / Linux users get the same
+//                    "lands in Downloads" experience as the mobile app,
+//                    but can still browse elsewhere.
+//   • Capacitor Android — writes to the device's public Downloads/KTurtle
+//                    folder via a tiny MediaStore JS bridge installed by
+//                    MainActivity.java. That means files show up in the
+//                    system Downloads UI and every file manager, exactly
+//                    like a browser download. Falls back to the Filesystem
+//                    plugin + share sheet when the bridge is missing
+//                    (older builds, Android < 10 with no write access).
+//                    Opening a .turtle file uses an <input type=file>
+//                    picker with accept="*/*" — Android's MIME mapping
+//                    has no entry for .turtle, so a stricter accept
+//                    string silently hides the files from the picker.
 //
 // Every function here is async and swallowing/normalising errors — the
 // UI never needs to care about the platform.
@@ -87,7 +92,8 @@ async function tauriSaveText(
 ): Promise<SaveResult> {
   const { save } = await import('@tauri-apps/plugin-dialog');
   const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-  const path = await save({ defaultPath: defaultName, filters });
+  const defaultPath = await tauriDefaultSavePath(defaultName);
+  const path = await save({ defaultPath, filters });
   if (!path) return { ok: false, cancelled: true };
   await writeTextFile(path, text);
   return { ok: true, path };
@@ -100,10 +106,33 @@ async function tauriSaveBinary(
 ): Promise<SaveResult> {
   const { save } = await import('@tauri-apps/plugin-dialog');
   const { writeFile } = await import('@tauri-apps/plugin-fs');
-  const path = await save({ defaultPath: defaultName, filters });
+  const defaultPath = await tauriDefaultSavePath(defaultName);
+  const path = await save({ defaultPath, filters });
   if (!path) return { ok: false, cancelled: true };
   await writeFile(path, bytes);
   return { ok: true, path };
+}
+
+/**
+ * Resolve a friendly default path for the Save As dialog on Tauri.
+ *
+ * We pre-seed it with `<user's Downloads>/<filename>` so Windows and
+ * Linux users land in the same place Android users do. The dialog
+ * still lets them browse to anywhere else, but the default matches the
+ * "browser download" mental model.
+ *
+ * Falls back to just the filename if the path plugin isn't present
+ * (older Tauri builds) — the dialog then opens in the user's last
+ * chosen directory, which is still a reasonable default.
+ */
+async function tauriDefaultSavePath(filename: string): Promise<string> {
+  try {
+    const { downloadDir, join } = await import('@tauri-apps/api/path');
+    const dir = await downloadDir();
+    return await join(dir, filename);
+  } catch {
+    return filename;
+  }
 }
 
 async function tauriOpenText(
@@ -122,11 +151,39 @@ async function tauriOpenText(
 //  Capacitor helpers
 // ────────────────────────────────────────────────────────────────────
 
+/**
+ * Access the native `window.KTurtleDownloads` bridge installed by
+ * MainActivity.java. Present only on Android builds that have the
+ * updated native shell; older builds fall through to the Filesystem
+ * plugin + share sheet path.
+ */
+interface KTurtleDownloadsBridge {
+  saveText?: (filename: string, mime: string, contents: string) => string | null;
+  saveBase64?: (filename: string, mime: string, base64: string) => string | null;
+}
+function getDownloadsBridge(): KTurtleDownloadsBridge | null {
+  const b = (globalThis as unknown as { KTurtleDownloads?: KTurtleDownloadsBridge })
+    .KTurtleDownloads;
+  return b && (b.saveText || b.saveBase64) ? b : null;
+}
+
 async function capSaveText(
   text: string,
   filename: string,
   subdir: string,
 ): Promise<SaveResult> {
+  // Preferred: write straight into the device's public Downloads/KTurtle
+  // folder via the native bridge. No permission prompt, no share sheet
+  // in the way — the file just appears where a browser download would.
+  const bridge = getDownloadsBridge();
+  if (bridge?.saveText) {
+    const mime = filename.endsWith('.svg') ? 'image/svg+xml' : 'text/plain';
+    const uri = bridge.saveText(filename, mime, text);
+    if (uri) return { ok: true, path: `Downloads/${subdir}/${filename}` };
+  }
+
+  // Fallback: write to the app-scoped Documents folder and offer the
+  // share sheet so the user can still get the file off-device.
   const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
   const target = `${subdir}/${filename}`;
   await Filesystem.writeFile({
@@ -146,9 +203,18 @@ async function capSaveDataUrl(
   filename: string,
   subdir: string,
 ): Promise<SaveResult> {
-  const { Filesystem, Directory } = await import('@capacitor/filesystem');
   // data:image/png;base64,XXXX → XXXX
   const base64 = dataUrl.split(',', 2)[1] ?? '';
+
+  // Preferred path: native MediaStore bridge → public Downloads/KTurtle.
+  const bridge = getDownloadsBridge();
+  if (bridge?.saveBase64) {
+    const mime = filename.endsWith('.png') ? 'image/png' : 'application/octet-stream';
+    const uri = bridge.saveBase64(filename, mime, base64);
+    if (uri) return { ok: true, path: `Downloads/${subdir}/${filename}` };
+  }
+
+  const { Filesystem, Directory } = await import('@capacitor/filesystem');
   const target = `${subdir}/${filename}`;
   await Filesystem.writeFile({
     path: target,
@@ -239,8 +305,15 @@ export async function openTurtleFile(): Promise<{ name: string; content: string 
   } catch (err) {
     console.error('openTurtleFile native path failed, falling back', err);
   }
-  // Capacitor + web both use the browser file input.
-  return webOpenText('.turtle,.logo,.txt,text/plain');
+  // Capacitor + web both use the browser file input. On Android the
+  // MIME database has no entry for the `.turtle` extension, so a
+  // strict accept string silently hides those files from the system
+  // picker (one of the long-standing WebView quirks). We relax the
+  // filter to "any file" on Capacitor and let the user pick, then
+  // trust the content itself — `fromKTurtleFile()` gracefully handles
+  // non-.turtle text anyway.
+  const accept = platform === 'capacitor' ? '*/*' : '.turtle,.logo,.txt,text/plain';
+  return webOpenText(accept);
 }
 
 /** Export the given SVG text as a file. */
