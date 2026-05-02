@@ -38,6 +38,13 @@ pub fn run() {
         if std::env::var_os("WEBKIT_DISABLE_COMPOSITING_MODE").is_none() {
             unsafe { std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1"); }
         }
+        // On pure-X11 systems, force GDK to the X11 backend so that
+        // WebKitGTK does not attempt a Wayland connection and fail.
+        // No-op on Wayland sessions; user can override by exporting
+        // GDK_BACKEND themselves.
+        if std::env::var_os("GDK_BACKEND").is_none() {
+            unsafe { std::env::set_var("GDK_BACKEND", "x11"); }
+        }
     }
 
     tauri::Builder::default()

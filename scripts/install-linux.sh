@@ -99,6 +99,7 @@ cat > "${WRAPPER}" <<EOF
 # shim on the Rust side.
 export WEBKIT_DISABLE_DMABUF_RENDERER="\${WEBKIT_DISABLE_DMABUF_RENDERER:-1}"
 export WEBKIT_DISABLE_COMPOSITING_MODE="\${WEBKIT_DISABLE_COMPOSITING_MODE:-1}"
+export GDK_BACKEND="\${GDK_BACKEND:-x11}"
 exec "${TARGET}" "\$@"
 EOF
 chmod +x "${WRAPPER}"
@@ -136,7 +137,7 @@ Type=Application
 Name=${APP_NAME}
 GenericName=Turtle Graphics Programming
 Comment=A quiet place to draw with code
-Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 ${TARGET} %U
+Exec=env WEBKIT_DISABLE_DMABUF_RENDERER=1 WEBKIT_DISABLE_COMPOSITING_MODE=1 GDK_BACKEND=x11 ${TARGET} %U
 Icon=kturtle
 Terminal=false
 Categories=Education;Development;Graphics;

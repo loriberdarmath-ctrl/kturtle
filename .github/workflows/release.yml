@@ -124,6 +124,55 @@ jobs:
       - name: Build Tauri (AppImage + deb)
         run: npm run tauri:build -- --bundles deb,appimage
 
+      # Fix EGL blank-window on Intel/X11 (GitHub issue #1)
+      # Tauri's linuxdeploy bundles libwayland-client, libEGL, libGL, etc.
+      # inside the AppImage. These override the host's native GPU drivers
+      # and cause 'Could not create default EGL display: EGL_BAD_PARAMETER'
+      # on systems with older Intel GPUs or pure-X11 setups.
+      # Fix: extract the AppImage, remove the conflicting .so files, then
+      # repack with appimagetool so the host's own libs are used at runtime.
+      - name: Strip bundled GPU libs and repack AppImage
+        run: |
+          set -euo pipefail
+
+          APPIMAGE=$(find src-tauri/target/release/bundle/appimage -name '*.AppImage' | head -n1)
+          if [[ -z "$APPIMAGE" ]]; then
+            echo 'Warning: No AppImage found, skipping repack'
+            exit 0
+          fi
+          echo "Repacking: $APPIMAGE"
+
+          chmod +x "$APPIMAGE"
+          "$APPIMAGE" --appimage-extract
+
+          # Remove libs that conflict with host graphics stack
+          pushd squashfs-root/usr/lib
+          rm -fv libwayland-client.so* \
+                 libEGL.so* \
+                 libEGL_mesa.so* \
+                 libGL.so* \
+                 libGLX.so* \
+                 libGLX_mesa.so* \
+                 libGLdispatch.so* \
+                 libdrm.so* \
+                 libgbm.so* \
+                 libwayland-egl.so* \
+                 libwayland-cursor.so* \
+                 libwayland-server.so*
+          popd
+
+          # Get appimagetool
+          curl -fsSL -o appimagetool-bin \
+            'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
+          chmod +x appimagetool-bin
+
+          # Repack (APPIMAGE_EXTRACT_AND_RUN for FUSE-less CI)
+          export ARCH=x86_64
+          APPIMAGE_EXTRACT_AND_RUN=1 ./appimagetool-bin squashfs-root "$APPIMAGE"
+          chmod +x "$APPIMAGE"
+          rm -rf squashfs-root appimagetool-bin
+          echo 'Repacked AppImage without bundled GPU libs'
+
       - name: Stage Linux artefacts
         # Two copies per asset — same rationale as the Windows job:
         # versioned originals for provenance, stable-named copies so the
