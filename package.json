@@ -32,10 +32,10 @@
     "@capacitor/share": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.1",
     "@capacitor/status-bar": "^8.0.2",
-    "@tauri-apps/api": "^2.1.1",
-    "@tauri-apps/plugin-dialog": "^2.0.1",
-    "@tauri-apps/plugin-fs": "^2.0.3",
-    "@tauri-apps/plugin-opener": "^2.5.4",
+    "@tauri-apps/api": "2.10.1",
+    "@tauri-apps/plugin-dialog": "2.4.0",
+    "@tauri-apps/plugin-fs": "2.4.2",
+    "@tauri-apps/plugin-opener": "2.5.3",
     "react": "19.2.3",
     "react-dom": "19.2.3"
   },
@@ -53,5 +53,8 @@
     "typescript": "5.9.3",
     "vite": "7.2.4",
     "vite-plugin-singlefile": "2.3.0"
+  },
+  "overrides": {
+    "@tauri-apps/api": "2.10.1"
   }
 }
