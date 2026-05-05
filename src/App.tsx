@@ -9,7 +9,7 @@ import { Popover } from './components/Popover';
 import { OpenFileDialog } from './components/OpenFileDialog';
 import { remember as rememberRecent } from './utils/recentFiles';
 import { drawingsToSvg } from './utils/exportSvg';
-import { saveTurtleFile, exportSvgFile, exportPngFile } from './utils/nativeIO';
+import { saveTurtleFile, exportSvgFile, exportPngFile, openExternal } from './utils/nativeIO';
 import { toKTurtleFile } from './interpreter/ktFileFormat';
 import { tokenize } from './interpreter/tokenizer';
 import { Parser } from './interpreter/parser';
@@ -994,6 +994,10 @@ export function App() {
                 href="https://docs.kde.org/stable5/en/kturtle/kturtle/index.html"
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={e => {
+                  e.preventDefault();
+                  void openExternal('https://docs.kde.org/stable5/en/kturtle/kturtle/index.html');
+                }}
                 className="hover:text-ink-900 transition-colors"
               >
                 {t('toolbar.handbook')}
@@ -1024,6 +1028,10 @@ export function App() {
                 href="https://t.me/narek1l"
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={e => {
+                  e.preventDefault();
+                  void openExternal('https://t.me/narek1l');
+                }}
                 className="underline decoration-ink-300 underline-offset-2 hover:text-ink-900 hover:decoration-ink-500 transition-colors"
               >
                 {t('footer.authorName')}

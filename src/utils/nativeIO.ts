@@ -386,3 +386,48 @@ export function isNativeShell(): boolean {
   const p = detect();
   return p === 'tauri' || p === 'capacitor';
 }
+
+/**
+ * Open an external URL in the user's default browser.
+ *
+ * On the **web** target this is just `window.open(href, '_blank')` —
+ * regular browser behaviour, no surprises.
+ *
+ * On **Tauri** (Windows + Linux desktop apps) we route through the
+ * `tauri-plugin-opener` IPC command. The Tauri webview blocks
+ * navigation to external origins by default and `target="_blank"` is
+ * a no-op there, so without this call clicking a footer link does
+ * nothing — which is the bug we are fixing.
+ *
+ * On **Capacitor** (Android) the system WebView also intercepts
+ * `target="_blank"`, so we hand the URL to `@capacitor/app` whose
+ * `openUrl` delegates to the OS intent picker (the user's browser
+ * picks it up).
+ *
+ * Errors are swallowed — failing to open a "About" link should never
+ * surface as a toast or crash the editor. We log to console so devs
+ * can still see what happened.
+ */
+export async function openExternal(href: string): Promise<void> {
+  const platform = detect();
+  try {
+    if (platform === 'tauri') {
+      const { openUrl } = await import('@tauri-apps/plugin-opener');
+      await openUrl(href);
+      return;
+    }
+    if (platform === 'capacitor') {
+      // `@capacitor/browser` opens an in-app Custom Tab (Android) /
+      // SafariViewController (iOS), which is the user-friendly path
+      // for arbitrary external URLs. `@capacitor/app`'s `openUrl` was
+      // removed in v8.
+      const { Browser } = await import('@capacitor/browser');
+      await Browser.open({ url: href });
+      return;
+    }
+  } catch (err) {
+    console.warn('openExternal: native opener failed, falling back to window.open', err);
+  }
+  // Web fallback — also catches the case where a native call threw.
+  window.open(href, '_blank', 'noopener,noreferrer');
+}

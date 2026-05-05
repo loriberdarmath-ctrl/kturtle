@@ -53,6 +53,11 @@ pub fn run() {
         // webview and does not need extra native bridges.
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        // `opener` lets the webview ask the host OS to open external
+        // URLs (Telegram link in the footer, GitHub link in About, etc.)
+        // in the user's default browser. Without this, target="_blank"
+        // anchors do nothing inside the Tauri window.
+        .plugin(tauri_plugin_opener::init())
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

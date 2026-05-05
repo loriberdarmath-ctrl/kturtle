@@ -10,7 +10,7 @@ import { DirectionPicker } from './DirectionPicker';
 import { OpenFileDialog } from './OpenFileDialog';
 import { useT } from '../i18n/context';
 import { examples } from '../examples';
-import { exportPngFile } from '../utils/nativeIO';
+import { exportPngFile, openExternal } from '../utils/nativeIO';
 
 /**
  * Single prop-bundle so App.tsx only has to hand over one object.
@@ -300,6 +300,10 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
               href="https://t.me/narek1l"
               target="_blank"
               rel="noopener noreferrer"
+              onClick={e => {
+                e.preventDefault();
+                void openExternal('https://t.me/narek1l');
+              }}
               className="underline decoration-ink-300 underline-offset-2 hover:text-ink-900 hover:decoration-ink-500 transition-colors"
             >
               {t('footer.authorName')}
