@@ -287,7 +287,15 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
             className="px-5 pb-5 pt-1 text-center italic text-[11.5px] text-ink-400"
             style={{ fontFamily: 'var(--font-serif)' }}
           >
-            {t('footer.author')}
+            {t('footer.authorPrefix')}
+            <a
+              href="https://t.me/narek1l"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline decoration-ink-300 underline-offset-2 hover:text-ink-900 hover:decoration-ink-500 transition-colors"
+            >
+              {t('footer.authorName')}
+            </a>
           </div>
         </BottomSheet>
       )}

@@ -170,7 +170,8 @@ const en: Dict = {
   'footer.basedOn': 'Based on',
   'footer.handbook': 'The KTurtle Handbook',
   'footer.quote': '"Draw the turtle, and the turtle will draw the world."',
-  'footer.author': 'by Narek Balayan',
+  'footer.authorPrefix': 'by ',
+  'footer.authorName': 'Narek Balayan',
 
   // Reference
   'reference.title': 'A little vocabulary',
@@ -322,7 +323,8 @@ const ru: Dict = {
   'footer.basedOn': 'По мотивам',
   'footer.handbook': 'Руководства KTurtle',
   'footer.quote': '«Нарисуй черепашку — и она нарисует мир.»',
-  'footer.author': 'автор — Нарек Балаян',
+  'footer.authorPrefix': 'автор — ',
+  'footer.authorName': 'Нарек Балаян',
 
   'reference.title': 'Небольшой словарь',
   'reference.toggle.show': 'Показать команды',
@@ -473,7 +475,8 @@ const hy: Dict = {
   'footer.basedOn': 'Հիմնված է',
   'footer.handbook': 'KTurtle-ի ձեռնարկի վրա',
   'footer.quote': '«Նկարի՛ր կրիային, և կրիան կնկարի աշխարհը։»',
-  'footer.author': 'հեղինակ՝ Նարեկ Բալայան',
+  'footer.authorPrefix': 'հեղինակ։ ',
+  'footer.authorName': 'Նարեկ Բալայան',
 
   'reference.title': 'Փոքրիկ բառարան',
   'reference.toggle.show': 'Ցուցադրել հրամանները',

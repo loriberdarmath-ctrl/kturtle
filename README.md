@@ -4,7 +4,7 @@ A quiet place to draw with code. TurtleScript programming environment
 for learners — runs as a website, a desktop app (Windows / Linux), and
 an Android app, from one React codebase.
 
-by Narek Balayan
+by [Narek Balayan](https://t.me/narek1l)
 
 **→ Try it online: [kturtle.vercel.app](https://kturtle.vercel.app/)**
 **→ About & downloads: [kturtle.vercel.app/about](https://kturtle.vercel.app/#about)**

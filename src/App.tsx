@@ -991,7 +991,15 @@ export function App() {
               className="italic whitespace-nowrap"
               style={{ fontFamily: 'var(--font-serif)' }}
             >
-              {t('footer.author')}
+              {t('footer.authorPrefix')}
+              <a
+                href="https://t.me/narek1l"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline decoration-ink-300 underline-offset-2 hover:text-ink-900 hover:decoration-ink-500 transition-colors"
+              >
+                {t('footer.authorName')}
+              </a>
             </span>
             {/*
               Tiny "about / home" link back to the marketing landing page.
