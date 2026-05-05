@@ -4,6 +4,7 @@ import { CodeEditor, CodeEditorHandle } from './components/CodeEditor';
 import { InspectorPane, InspectorTab } from './components/InspectorPane';
 import { SplitPane } from './components/SplitPane';
 import { ColorPicker } from './components/ColorPicker';
+import { DirectionPicker } from './components/DirectionPicker';
 import { Popover } from './components/Popover';
 import { OpenFileDialog } from './components/OpenFileDialog';
 import { remember as rememberRecent } from './utils/recentFiles';
@@ -38,6 +39,7 @@ export function App() {
   const [exportedImage, setExportedImage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showDirectionPicker, setShowDirectionPicker] = useState(false);
   const [showOpenDialog, setShowOpenDialog] = useState(false);
   const [showReference, setShowReference] = useState(false);
   const canvasRef = useRef<TurtleCanvasHandle>(null);
@@ -528,13 +530,14 @@ export function App() {
           showMobileMore, setShowMobileMore,
           canvasZoomDisplay, setCanvasZoomDisplay,
           setShowColorPicker,
+          setShowDirectionPicker,
           setShowOpenDialog,
           setShowExportModal,
           setExportedImage,
           handleFilePicked,
           // Modal visibility + data so MobileShell can render them fullscreen.
           exportedImage, showExportModal,
-          showColorPicker, showOpenDialog,
+          showColorPicker, showDirectionPicker, showOpenDialog,
         }}
       />
     );
@@ -741,6 +744,31 @@ export function App() {
               aria-hidden
             />
             <span className="hidden md:inline">{t('toolbar.colorPicker')}</span>
+          </button>
+
+          {/* Direction chooser — opens a compass dial that emits
+              turnleft/turnright/direction commands. */}
+          <button
+            onClick={() => setShowDirectionPicker(true)}
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
+            title={t('toolbar.direction')}
+          >
+            <svg
+              viewBox="0 0 16 16"
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              aria-hidden
+            >
+              <circle cx="8" cy="8" r="6.2" />
+              <path d="M8 4.2 L9.4 8.4 L8 10.2 L6.6 8.4 Z" fill="currentColor" stroke="none" />
+              <line x1="8" y1="1.6" x2="8" y2="2.8" strokeLinecap="round" />
+              <line x1="8" y1="13.2" x2="8" y2="14.4" strokeLinecap="round" />
+              <line x1="1.6" y1="8" x2="2.8" y2="8" strokeLinecap="round" />
+              <line x1="13.2" y1="8" x2="14.4" y2="8" strokeLinecap="round" />
+            </svg>
+            <span className="hidden md:inline">{t('toolbar.direction')}</span>
           </button>
 
           </div>
@@ -1075,6 +1103,13 @@ export function App() {
         open={showColorPicker}
         initialColor={turtle.penColor}
         onClose={() => setShowColorPicker(false)}
+        onInsertCode={text => editorRef.current?.insertAtCaret(text)}
+      />
+
+      <DirectionPicker
+        open={showDirectionPicker}
+        initialAngle={turtle.angle}
+        onClose={() => setShowDirectionPicker(false)}
         onInsertCode={text => editorRef.current?.insertAtCaret(text)}
       />
 

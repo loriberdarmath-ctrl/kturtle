@@ -6,6 +6,7 @@ import { CodeEditor, CodeEditorHandle } from './CodeEditor';
 import { TurtleCanvas, TurtleCanvasHandle } from './TurtleCanvas';
 import { InspectorPane, InspectorTab } from './InspectorPane';
 import { ColorPicker } from './ColorPicker';
+import { DirectionPicker } from './DirectionPicker';
 import { OpenFileDialog } from './OpenFileDialog';
 import { useT } from '../i18n/context';
 import { examples } from '../examples';
@@ -57,6 +58,7 @@ export interface MobileShellApp {
   canvasZoomDisplay: number;
   setCanvasZoomDisplay: (n: number) => void;
   setShowColorPicker: (v: boolean) => void;
+  setShowDirectionPicker: (v: boolean) => void;
   setShowOpenDialog: (v: boolean) => void;
   setShowExportModal: (v: boolean) => void;
   setExportedImage: (s: string | null) => void;
@@ -64,6 +66,7 @@ export interface MobileShellApp {
   exportedImage: string | null;
   showExportModal: boolean;
   showColorPicker: boolean;
+  showDirectionPicker: boolean;
   showOpenDialog: boolean;
 }
 
@@ -102,7 +105,7 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
     setShowColorPicker, setShowOpenDialog,
     setShowExportModal, setExportedImage,
     handleFilePicked,
-    showColorPicker, showOpenDialog,
+    showColorPicker, showOpenDialog, showDirectionPicker, setShowDirectionPicker,
     exportedImage, showExportModal,
   } = app;
 
@@ -258,6 +261,11 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
               onClick={() => { setShowColorPicker(true); setShowMobileMore(false); }}
             />
             <SheetAction
+              icon={<IconCompass />}
+              label={t('toolbar.direction')}
+              onClick={() => { setShowDirectionPicker(true); setShowMobileMore(false); }}
+            />
+            <SheetAction
               icon={<IconImage />}
               label={t('toolbar.file.exportPng')}
               onClick={() => {
@@ -356,6 +364,13 @@ function MobileShellImpl({ app }: { app: MobileShellApp }) {
         open={showColorPicker}
         initialColor={turtle.penColor}
         onClose={() => setShowColorPicker(false)}
+        onInsertCode={text => editorRef.current?.insertAtCaret(text)}
+      />
+
+      <DirectionPicker
+        open={showDirectionPicker}
+        initialAngle={turtle.angle}
+        onClose={() => setShowDirectionPicker(false)}
         onInsertCode={text => editorRef.current?.insertAtCaret(text)}
       />
 
@@ -1054,6 +1069,18 @@ function IconColor() {
           <stop offset="1" stopColor="#8c6ba8" />
         </linearGradient>
       </defs>
+    </svg>
+  );
+}
+function IconCompass() {
+  return (
+    <svg viewBox="0 0 24 24" className="w-5 h-5" fill="none" stroke="currentColor" strokeWidth={1.6} aria-hidden>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 5.5 L14 12 L12 14.5 L10 12 Z" fill="currentColor" stroke="none" />
+      <line x1="12" y1="2" x2="12" y2="3.6" strokeLinecap="round" />
+      <line x1="12" y1="20.4" x2="12" y2="22" strokeLinecap="round" />
+      <line x1="2" y1="12" x2="3.6" y2="12" strokeLinecap="round" />
+      <line x1="20.4" y1="12" x2="22" y2="12" strokeLinecap="round" />
     </svg>
   );
 }

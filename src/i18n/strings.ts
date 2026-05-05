@@ -54,6 +54,7 @@ const en: Dict = {
   'toolbar.drawing': 'Drawing…',
   'toolbar.ready': 'Ready',
   'toolbar.colorPicker': 'Color picker',
+  'toolbar.direction': 'Direction',
   'toolbar.more': 'More',
 
   // Panes
@@ -127,6 +128,16 @@ const en: Dict = {
   'color.copy': 'Copy hex',
   'color.cancel': 'Cancel',
   'color.recent': 'Recent',
+
+  // Direction picker
+  'direction.title': 'Bearing',
+  'direction.subtitle': 'Direction Chooser',
+  'direction.commandType': 'Command type',
+  'direction.previous': 'Previous direction',
+  'direction.new': 'New direction',
+  'direction.hint': 'Drag the orange needle to set the new bearing. Hold Shift to snap to 5°.',
+  'direction.insert': 'Paste to editor',
+  'direction.copy': 'Copy command',
 
   // File dialogs
   'file.open.title': 'Open a file',
@@ -216,6 +227,7 @@ const ru: Dict = {
   'toolbar.drawing': 'Рисует…',
   'toolbar.ready': 'Готово',
   'toolbar.colorPicker': 'Выбор цвета',
+  'toolbar.direction': 'Направление',
   'toolbar.more': 'Ещё',
 
   'pane.workspace': 'Рабочая область',
@@ -283,6 +295,16 @@ const ru: Dict = {
   'color.copy': 'Копировать hex',
   'color.cancel': 'Отмена',
   'color.recent': 'Недавние',
+
+  // Direction picker
+  'direction.title': 'Азимут',
+  'direction.subtitle': 'Выбор направления',
+  'direction.commandType': 'Тип команды',
+  'direction.previous': 'Предыдущее направление',
+  'direction.new': 'Новое направление',
+  'direction.hint': 'Перетащите оранжевую стрелку. Shift — шаг 5°.',
+  'direction.insert': 'Вставить',
+  'direction.copy': 'Копировать',
 
   'file.open.title': 'Открыть файл',
   'file.open.hint': 'Выберите пример, недавний файл или откройте с компьютера.',
@@ -368,6 +390,7 @@ const hy: Dict = {
   'toolbar.drawing': 'Նկարում է…',
   'toolbar.ready': 'Պատրաստ է',
   'toolbar.colorPicker': 'Գույնի ընտրիչ',
+  'toolbar.direction': 'Ուղղություն',
   'toolbar.more': 'Ավելին',
 
   'pane.workspace': 'Աշխատատարածք',
@@ -435,6 +458,16 @@ const hy: Dict = {
   'color.copy': 'Պատճենել hex',
   'color.cancel': 'Չեղարկել',
   'color.recent': 'Վերջինները',
+
+  // Direction picker
+  'direction.title': 'Ուղղություն',
+  'direction.subtitle': 'Ուղղության ընտրիչ',
+  'direction.commandType': 'Հրամանի տեսակ',
+  'direction.previous': 'Նախորդ ուղղություն',
+  'direction.new': 'Նոր ուղղություն',
+  'direction.hint': 'Քաշեք նարնջագույն ասեղը։ Shift — 5° քայլ.',
+  'direction.insert': 'Տեղադրել',
+  'direction.copy': 'Պատճենել',
 
   'file.open.title': 'Բացել ֆայլ',
   'file.open.hint': 'Ընտրեք օրինակ, վերջին ֆայլ կամ բացեք ձեր համակարգչից։',

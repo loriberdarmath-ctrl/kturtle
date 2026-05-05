@@ -239,12 +239,21 @@ const SvgDrawings = memo(function SvgDrawings({
   canvasColor,
   canvasWidth,
   canvasHeight,
+  turtle,
+  spriteUrl,
 }: {
   drawings: DrawCommand[];
   drawingsLen: number;
   canvasColor: string;
   canvasWidth: number;
   canvasHeight: number;
+  /** When provided, render a small turtle sprite at the turtle's
+   *  position so the user keeps seeing the turtle once a run ends.
+   *  KDE KTurtle behaves the same way: the turtle persists on the
+   *  canvas after the program finishes unless the program calls
+   *  `hide`. */
+  turtle?: { x: number; y: number; angle: number; visible: boolean };
+  spriteUrl?: string;
 }) {
   const elements = useMemo(() => {
     let bgColor = canvasColor;
@@ -311,6 +320,19 @@ const SvgDrawings = memo(function SvgDrawings({
         fill={elements.bgColor}
       />
       {elements.els}
+      {turtle && turtle.visible && spriteUrl && (
+        <image
+          href={spriteUrl}
+          xlinkHref={spriteUrl}
+          x={-DRAW_SIZE / 2}
+          y={-DRAW_SIZE / 2}
+          width={DRAW_SIZE}
+          height={DRAW_SIZE}
+          transform={`translate(${turtle.x} ${turtle.y}) rotate(${turtle.angle})`}
+          style={{ pointerEvents: 'none' }}
+          preserveAspectRatio="xMidYMid meet"
+        />
+      )}
     </>
   );
 });
@@ -960,6 +982,13 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             canvasColor={turtle.canvasColor || '#ffffff'}
             canvasWidth={w}
             canvasHeight={h}
+            turtle={{
+              x: turtle.x,
+              y: turtle.y,
+              angle: turtle.angle,
+              visible: turtle.visible,
+            }}
+            spriteUrl={LOGO_URL}
           />
         </svg>
       )}
