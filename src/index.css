@@ -196,21 +196,27 @@ body {
   scrollbar-width: none;
   -ms-overflow-style: none;
   -webkit-overflow-scrolling: touch;
-  /* Fade indicators at the edges hint at scrollable content */
-  mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 12px,
-    #000 calc(100% - 12px),
-    transparent 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    transparent 0,
-    #000 12px,
-    #000 calc(100% - 12px),
-    transparent 100%
-  );
+}
+/* Edge-fade mask only applies when the toolbar is actually scrolling
+   (mobile / very narrow viewports). On desktop the middle zone uses
+   `overflow-visible`, so a mask would clip popovers and look like a bug. */
+@media (max-width: 639px) {
+  .toolbar-scroll {
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 12px),
+      transparent 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 12px,
+      #000 calc(100% - 12px),
+      transparent 100%
+    );
+  }
 }
 .toolbar-scroll::-webkit-scrollbar {
   display: none;

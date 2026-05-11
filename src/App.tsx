@@ -554,30 +554,10 @@ export function App() {
           Nothing ever wraps → toolbar height is constant, avoiding the
           layout shift / "menu under something" bugs. */}
       <header className="flex-shrink-0 toolbar-header">
-        <div className="px-3 sm:px-5 h-13 flex items-center gap-2.5 min-w-0">
-          {/* Logo + wordmark. Using the official KTurtle logo (Wikimedia
-              Commons, File:KTurtle_logo.svg) so our brand mark matches
-              the upstream desktop app. The file lives in /public so Vite
-              serves it as a plain asset. */}
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            <div className="w-9 h-9 logo-mark flex items-center justify-center overflow-hidden">
-              <img
-                src={`${import.meta.env.BASE_URL}kturtle-logo.svg`}
-                alt={t('app.title')}
-                className="w-6 h-6"
-                width={24}
-                height={24}
-                draggable={false}
-              />
-            </div>
-            <div
-              className="font-display text-[16px] font-medium tracking-tight leading-none"
-              style={{ letterSpacing: '-0.01em' }}
-            >
-              {t('app.title')}<span className="text-accent">.</span>
-              <span className="italic font-normal text-ink-600">{t('app.subtitle')}</span>
-            </div>
-          </div>
+        <div className="px-3 sm:px-4 h-13 flex items-center gap-1.5 sm:gap-2 min-w-0">
+          {/* Brand block intentionally removed — toolbar starts directly
+              with actionable controls so everything fits in a single row
+              without horizontal scrolling on typical desktop widths. */}
 
           {/* File menu (trigger; Popover attached below the toolbar row) */}
           <button
@@ -679,17 +659,25 @@ export function App() {
             <span className="hidden sm:inline">{t('toolbar.clear')}</span>
           </button>
 
-          {/* ── MIDDLE ZONE: scrolls horizontally if it can't fit. No wrap. */}
+          {/* ── MIDDLE ZONE.
+              Desktop: stays inline & visible (no horizontal scroll, no
+              clipped popovers). Controls collapse to icon-only at narrower
+              widths so the bar fits without a scroller.
+              Mobile (< sm): falls back to a hidden-scrollbar horizontal
+              scroller as a graceful safety net. */}
           <div
-            className="toolbar-scroll flex items-center gap-2 min-w-0 flex-1 overflow-x-auto overflow-y-hidden"
+            className="toolbar-scroll flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden sm:overflow-visible"
             style={{ scrollbarWidth: 'none' }}
           >
           {/* Speed slider — continuous, replaces the old dropdown */}
-          <div className="flex-shrink-0 inline-flex items-center gap-2 pl-2.5 pr-2.5 py-1.5 rounded-lg border border-line bg-white/80">
+          <div
+            className="flex-shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2 py-1.5 rounded-lg border border-line bg-white/80"
+            title={`${t('toolbar.speed')}: ${speedLabel}`}
+          >
             <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
             </svg>
-            <span className="text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.speed')}</span>
+            <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.speed')}</span>
             <input
               type="range"
               min={0}
@@ -697,15 +685,21 @@ export function App() {
               step={1}
               value={speedIdx}
               onChange={e => setSpeedIdx(Number(e.target.value))}
-              className="w-24 speed-slider"
+              className="w-16 md:w-20 lg:w-24 speed-slider"
               aria-label={t('toolbar.speed')}
             />
-            <span className="text-[11px] text-ink-700 font-mono tab-nums w-14 text-right">{speedLabel}</span>
+            <span className="hidden xl:inline text-[11px] text-ink-700 font-mono tab-nums w-14 text-right">{speedLabel}</span>
           </div>
 
           {/* Examples */}
-          <label className="flex-shrink-0 inline-flex items-center gap-1.5 pl-3 pr-1 py-1.5 rounded-lg border border-line bg-white/80">
-            <span className="text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.examples')}</span>
+          <label
+            className="flex-shrink-0 relative inline-flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg border border-line bg-white/80"
+            title={t('toolbar.examples')}
+          >
+            <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+            </svg>
+            <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.examples')}</span>
             <select
               onChange={e => {
                 if (e.target.value) {
@@ -713,7 +707,8 @@ export function App() {
                   resetCanvas();
                 }
               }}
-              className="bg-transparent text-[12.5px] text-ink-900 outline-none appearance-none pr-5 cursor-pointer"
+              aria-label={t('toolbar.examples')}
+              className="bg-transparent text-[12.5px] text-ink-900 outline-none appearance-none pr-5 cursor-pointer max-w-[120px] md:max-w-[140px] lg:max-w-none"
               style={{
                 backgroundImage:
                   "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%235c564c'><path d='M5.25 7.5l4.75 5 4.75-5'/></svg>\")",
@@ -732,8 +727,9 @@ export function App() {
           {/* Color picker */}
           <button
             onClick={() => setShowColorPicker(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
             title={t('toolbar.colorPicker')}
+            aria-label={t('toolbar.colorPicker')}
           >
             <span
               className="w-4 h-4 rounded-sm border border-line"
@@ -743,15 +739,16 @@ export function App() {
               }}
               aria-hidden
             />
-            <span className="hidden md:inline">{t('toolbar.colorPicker')}</span>
+            <span className="hidden xl:inline">{t('toolbar.colorPicker')}</span>
           </button>
 
           {/* Direction chooser — opens a compass dial that emits
               turnleft/turnright/direction commands. */}
           <button
             onClick={() => setShowDirectionPicker(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
+            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
             title={t('toolbar.direction')}
+            aria-label={t('toolbar.direction')}
           >
             <svg
               viewBox="0 0 16 16"
@@ -768,7 +765,7 @@ export function App() {
               <line x1="1.6" y1="8" x2="2.8" y2="8" strokeLinecap="round" />
               <line x1="13.2" y1="8" x2="14.4" y2="8" strokeLinecap="round" />
             </svg>
-            <span className="hidden md:inline">{t('toolbar.direction')}</span>
+            <span className="hidden xl:inline">{t('toolbar.direction')}</span>
           </button>
 
           </div>
@@ -894,17 +891,17 @@ export function App() {
         >
           {/* LEFT: Editor */}
           <section className="flex flex-col h-full min-w-0 bg-white border-r border-line">
-            <div className="flex items-center justify-between px-4 py-2.5 pane-header flex-shrink-0">
-              <div className="flex items-baseline gap-2 min-w-0">
-                <h2 className="text-[11.5px] font-semibold text-ink-800 uppercase tracking-[0.12em] truncate">
+            <div className="flex items-center justify-between gap-2 px-3 py-2 pane-header flex-shrink-0 h-9">
+              <div className="flex items-baseline gap-1.5 min-w-0">
+                <h2 className="text-[10.5px] font-semibold text-ink-800 uppercase tracking-[0.1em] flex-shrink-0">
                   {t('pane.editor')}
                 </h2>
-                <span className="text-[11px] text-ink-500 italic truncate">
+                <span className="text-[10.5px] text-ink-500 italic truncate min-w-0">
                   {t('pane.editor.subtitle')}
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-ink-500 font-mono flex-shrink-0">
-                <span className="truncate max-w-[140px]">{fileName}</span>
+              <div className="flex items-center gap-1.5 text-[10.5px] text-ink-500 font-mono flex-shrink-0">
+                <span className="truncate max-w-[120px]">{fileName}</span>
                 <span className="text-ink-300">·</span>
                 <span>{t('editor.lines', codeLineCount)}</span>
               </div>
@@ -1226,19 +1223,19 @@ function CanvasPane({
   const { t } = useT();
   return (
     <div className="flex flex-col h-full min-w-0 bg-white">
-      <div className="flex items-center justify-between px-4 py-2.5 pane-header flex-shrink-0">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-[11.5px] font-semibold text-ink-800 uppercase tracking-[0.12em] truncate">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 pane-header flex-shrink-0 h-9">
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <h2 className="text-[10.5px] font-semibold text-ink-800 uppercase tracking-[0.1em] flex-shrink-0">
             {t('pane.canvas')}
           </h2>
-          <span className="text-[11px] text-ink-500 italic truncate hidden sm:inline">
+          <span className="text-[10.5px] text-ink-500 italic truncate hidden sm:inline min-w-0">
             {t('pane.canvas.subtitle')}
           </span>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 flex-shrink-0">
           <button
             onClick={() => canvasRef.current?.zoomOut()}
-            className="w-7 h-7 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
+            className="w-6 h-6 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
             title="Zoom out"
             aria-label="Zoom out"
           >
@@ -1246,12 +1243,12 @@ function CanvasPane({
               <path strokeLinecap="round" strokeLinejoin="round" d="M20 12H4" />
             </svg>
           </button>
-          <span className="text-[11px] font-mono text-ink-700 tab-nums w-12 text-center">
+          <span className="text-[10.5px] font-mono text-ink-700 tab-nums w-10 text-center">
             {Math.round(canvasZoomDisplay * 100)}%
           </span>
           <button
             onClick={() => canvasRef.current?.zoomIn()}
-            className="w-7 h-7 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
+            className="w-6 h-6 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
             title="Zoom in"
             aria-label="Zoom in"
           >
@@ -1261,7 +1258,7 @@ function CanvasPane({
           </button>
           <button
             onClick={() => canvasRef.current?.resetView()}
-            className="ml-1 px-2 h-7 rounded-md text-[11px] text-ink-500 hover:text-ink-900 hover:bg-paper-soft transition-colors"
+            className="ml-0.5 px-1.5 h-6 rounded-md text-[10.5px] text-ink-500 hover:text-ink-900 hover:bg-paper-soft transition-colors whitespace-nowrap"
             title={t('canvas.resetView')}
           >
             {t('canvas.fitToScreen')}
@@ -1269,7 +1266,7 @@ function CanvasPane({
           <div className="w-px h-4 bg-line mx-1" />
           <button
             onClick={onHideInspector}
-            className="w-7 h-7 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
+            className="w-6 h-6 rounded-md text-ink-500 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors"
             title={inspectorHidden ? t('pane.show') : t('pane.hide')}
             aria-label={inspectorHidden ? t('pane.show') : t('pane.hide')}
           >

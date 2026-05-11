@@ -47,6 +47,7 @@ builds/
 .env
 .env.local
 .env.*.local
+.gh-token
 
 # Logs
 *.log

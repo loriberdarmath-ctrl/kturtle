@@ -125,19 +125,19 @@ function InspectorPaneImpl({
   return (
     <div className="flex flex-col h-full bg-white min-w-0">
       {/* Pane header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-line bg-paper-soft/60 flex-shrink-0">
-        <div className="flex items-baseline gap-2 min-w-0">
-          <h2 className="text-[12.5px] font-medium text-ink-900 uppercase tracking-[0.1em] truncate">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 pane-header flex-shrink-0 h-9">
+        <div className="flex items-baseline gap-1.5 min-w-0">
+          <h2 className="text-[10.5px] font-semibold text-ink-800 uppercase tracking-[0.1em] flex-shrink-0">
             {t('pane.inspector')}
           </h2>
-          <span className="text-[11px] text-ink-500 italic truncate">
+          <span className="text-[10.5px] text-ink-500 italic truncate min-w-0">
             {t('pane.inspector.subtitle')}
           </span>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="text-ink-400 hover:text-ink-900 transition-colors"
+            className="w-6 h-6 rounded-md text-ink-400 hover:text-ink-900 hover:bg-paper-soft inline-flex items-center justify-center transition-colors flex-shrink-0"
             aria-label={t('pane.hide')}
             title={t('pane.hide')}
           >
