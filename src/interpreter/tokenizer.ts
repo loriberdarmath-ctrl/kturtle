@@ -4,6 +4,7 @@ import { TurtleError } from './errors';
 export type TokenType =
   | 'NUMBER'
   | 'STRING'
+  | 'BOOLEAN'
   | 'IDENTIFIER'
   | 'VARIABLE'
   | 'COMMAND'
@@ -45,6 +46,7 @@ const COMMANDS = new Set([
 
 const KEYWORDS = new Set(['if', 'else', 'while', 'repeat', 'for', 'to', 'step', 'learn', 'return', 'exit']);
 const LOGICAL = new Set(['and', 'or', 'not']);
+const BOOLEANS = new Set(['true', 'false']);
 
 export function tokenize(code: string): Token[] {
   const tokens: Token[] = [];
@@ -125,14 +127,9 @@ export function tokenize(code: string): Token[] {
     }
 
     // Numbers
-    if (/[0-9]/.test(char) || (char === '-' && pos + 1 < code.length && /[0-9]/.test(code[pos + 1]))) {
+    if (/[0-9]/.test(char)) {
       const startCol = column;
       let num = '';
-      if (char === '-') {
-        num = '-';
-        pos++;
-        column++;
-      }
       while (pos < code.length && /[0-9.]/.test(code[pos])) {
         num += code[pos];
         pos++;
@@ -167,7 +164,9 @@ export function tokenize(code: string): Token[] {
         column++;
       }
       const lower = id.toLowerCase();
-      if (COMMANDS.has(lower)) {
+      if (BOOLEANS.has(lower)) {
+        tokens.push({ type: 'BOOLEAN', value: lower, line, column: startCol });
+      } else if (COMMANDS.has(lower)) {
         tokens.push({ type: 'COMMAND', value: lower, line, column: startCol });
       } else if (KEYWORDS.has(lower)) {
         tokens.push({ type: 'KEYWORD', value: lower, line, column: startCol });
@@ -180,7 +179,7 @@ export function tokenize(code: string): Token[] {
     }
 
     // Operators and punctuation
-    if (char === '+' || char === '-' || char === '*' || char === '/') {
+    if (char === '+' || char === '-' || char === '*' || char === '/' || char === '^') {
       tokens.push({ type: 'OPERATOR', value: char, line, column });
       pos++;
       column++;

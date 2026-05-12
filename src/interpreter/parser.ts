@@ -24,6 +24,7 @@ export type ASTNode =
   | { type: 'Program'; body: ASTNode[] }
   | { type: 'Command'; name: string; args: ASTNode[]; line: number }
   | { type: 'Number'; value: number; line: number }
+  | { type: 'Boolean'; value: boolean; line: number }
   | { type: 'String'; value: string; line: number }
   | { type: 'Variable'; name: string; line: number }
   | { type: 'Assignment'; name: string; value: ASTNode; line: number }
@@ -134,6 +135,7 @@ export class Parser {
       case 'COMMAND': return 'command';
       case 'VARIABLE': return 'variable';
       case 'NUMBER': return 'number';
+      case 'BOOLEAN': return 'boolean';
       case 'STRING': return 'string';
       case 'IDENTIFIER': return 'name';
       case 'OPERATOR': return 'operator';
@@ -285,7 +287,7 @@ export class Parser {
 
   private isExpressionStart(): boolean {
     const t = this.current().type;
-    return t === 'NUMBER' || t === 'STRING' || t === 'VARIABLE' || t === 'LPAREN';
+    return t === 'NUMBER' || t === 'BOOLEAN' || t === 'STRING' || t === 'VARIABLE' || t === 'LPAREN';
   }
 
   private parseFunctionCall(): ASTNode {
@@ -326,9 +328,13 @@ export class Parser {
     if (this.current().type === 'KEYWORD' && this.current().value === 'else') {
       this.advance();
       this.skipNewlines();
-      this.expect('LBRACE');
-      elseBody = this.parseBlock();
-      this.expect('RBRACE');
+      if (this.current().type === 'KEYWORD' && this.current().value === 'if') {
+        elseBody = [this.parseIf()];
+      } else {
+        this.expect('LBRACE');
+        elseBody = this.parseBlock();
+        this.expect('RBRACE');
+      }
     }
 
     return { type: 'If', condition, body, elseBody, line: ifToken.line };
@@ -474,12 +480,24 @@ export class Parser {
   }
 
   private parseMulDiv(): ASTNode {
-    let left = this.parseUnary();
+    let left = this.parsePower();
 
     while (this.current().type === 'OPERATOR' && (this.current().value === '*' || this.current().value === '/')) {
       const op = this.advance();
-      const right = this.parseUnary();
+      const right = this.parsePower();
       left = { type: 'BinaryOp', operator: op.value, left, right, line: op.line };
+    }
+
+    return left;
+  }
+
+  private parsePower(): ASTNode {
+    const left = this.parseUnary();
+
+    if (this.current().type === 'OPERATOR' && this.current().value === '^') {
+      const op = this.advance();
+      const right = this.parsePower();
+      return { type: 'BinaryOp', operator: op.value, left, right, line: op.line };
     }
 
     return left;
@@ -488,7 +506,7 @@ export class Parser {
   private parseUnary(): ASTNode {
     if (this.current().type === 'OPERATOR' && this.current().value === '-') {
       const op = this.advance();
-      const operand = this.parsePrimary();
+      const operand = this.parseUnary();
       return { type: 'UnaryOp', operator: '-', operand, line: op.line };
     }
     return this.parsePrimary();
@@ -500,6 +518,11 @@ export class Parser {
     if (token.type === 'NUMBER') {
       this.advance();
       return { type: 'Number', value: parseFloat(token.value), line: token.line };
+    }
+
+    if (token.type === 'BOOLEAN') {
+      this.advance();
+      return { type: 'Boolean', value: token.value === 'true', line: token.line };
     }
 
     if (token.type === 'STRING') {

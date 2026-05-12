@@ -66,13 +66,14 @@ export interface TurtleCanvasHandle {
    * the run ends) it picks up seamlessly.
    */
   renderFrame: (turtle: TurtleState, drawings: DrawCommand[], drawingsLen: number) => void;
+  preserveLiveFrame: (turtle: TurtleState, drawings: DrawCommand[], drawingsLen: number) => void;
   /**
    * Clear the imperative "live inputs" cache — call after a run has
    * completed and React props represent the authoritative state again.
    * Without this, a later user-driven re-paint (zoom, resize) would
    * mistakenly prefer stale live data over the new props.
    */
-  endRun: () => void;
+  endRun: (options?: { promoteToSvg?: boolean }) => void;
 }
 
 // Offscreen turtle sprite (rendered once, reused). The sprite canvas is small
@@ -227,6 +228,130 @@ function renderCommands(
 
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 40;
+const SVG_PATH_SEGMENT_LIMIT = 2000;
+const RASTER_ZOOM_REPAINT_COMMAND_LIMIT = 3000;
+const SVG_WORKER_THRESHOLD = 1200;
+
+type SvgScene = {
+  bgColor: string;
+  markup: string;
+};
+
+type SvgWorkerResponse = {
+  id: number;
+  scene: SvgScene;
+};
+
+type SvgWorkerRequest =
+  | { type: 'reset'; id: number; canvasColor: string }
+  | { type: 'append'; id: number; commands: DrawCommand[] }
+  | { type: 'build'; id: number };
+
+function fmtSvgNumber(n: number): string {
+  if (Number.isInteger(n)) return String(n);
+  return n.toFixed(2).replace(/\.?0+$/, '');
+}
+
+function escSvgAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function escSvgText(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function svgSceneToObjectUrl(scene: SvgScene, canvasWidth: number, canvasHeight: number): string {
+  const w = fmtSvgNumber(canvasWidth);
+  const h = fmtSvgNumber(canvasHeight);
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">` +
+    `<defs><clipPath id="canvas-clip" clipPathUnits="userSpaceOnUse"><rect x="0" y="0" width="${w}" height="${h}" /></clipPath></defs>` +
+    `<rect x="0" y="0" width="${w}" height="${h}" fill="${escSvgAttr(scene.bgColor)}" />` +
+    `<g clip-path="url(#canvas-clip)">${scene.markup}</g>` +
+    `</svg>`;
+
+  return URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml;charset=utf-8' }));
+}
+
+function buildSvgScene(
+  drawings: DrawCommand[],
+  drawingsLen: number,
+  canvasColor: string,
+): SvgScene {
+  let bgColor = canvasColor;
+  const markup: string[] = [];
+  let pathParts: string[] = [];
+  let pathColor = '';
+  let pathWidth = -1;
+  let pathSegments = 0;
+
+  const flushPath = () => {
+    if (pathSegments === 0) return;
+    markup.push(
+      `<path d="${pathParts.join(' ')}" fill="none" stroke="${escSvgAttr(pathColor)}" stroke-width="${fmtSvgNumber(pathWidth)}" stroke-linecap="square" stroke-linejoin="bevel" />`,
+    );
+    pathParts = [];
+    pathSegments = 0;
+  };
+
+  for (let i = 0; i < drawingsLen; i++) {
+    const cmd = drawings[i];
+    switch (cmd.type) {
+      case 'clear':
+        flushPath();
+        markup.length = 0;
+        break;
+
+      case 'canvasColor':
+        flushPath();
+        if (cmd.color) bgColor = cmd.color;
+        markup.length = 0;
+        break;
+
+      case 'line': {
+        if (
+          cmd.x1 === undefined || cmd.y1 === undefined ||
+          cmd.x2 === undefined || cmd.y2 === undefined
+        ) break;
+        const color = cmd.color || '#000';
+        const width = cmd.width ?? 1;
+        if (
+          pathSegments > 0 &&
+          (color !== pathColor || width !== pathWidth || pathSegments >= SVG_PATH_SEGMENT_LIMIT)
+        ) {
+          flushPath();
+        }
+        if (pathSegments === 0) {
+          pathColor = color;
+          pathWidth = width;
+        }
+        pathParts.push(
+          `M${fmtSvgNumber(cmd.x1)} ${fmtSvgNumber(cmd.y1)}L${fmtSvgNumber(cmd.x2)} ${fmtSvgNumber(cmd.y2)}`,
+        );
+        pathSegments++;
+        break;
+      }
+
+      case 'text': {
+        flushPath();
+        if (cmd.x1 === undefined || cmd.y1 === undefined || !cmd.text) break;
+        const color = escSvgAttr(cmd.color || '#000');
+        const size = cmd.fontSize ?? 12;
+        markup.push(
+          `<text x="${fmtSvgNumber(cmd.x1)}" y="${fmtSvgNumber(cmd.y1)}" fill="${color}" font-size="${fmtSvgNumber(size)}" font-family="sans-serif" dominant-baseline="hanging">${escSvgText(cmd.text)}</text>`,
+        );
+        break;
+      }
+    }
+  }
+
+  flushPath();
+  return { bgColor, markup: markup.join('') };
+}
 
 /**
  * Pure SVG representation of draw commands. Rendered as an overlay on top
@@ -239,14 +364,17 @@ const SvgDrawings = memo(function SvgDrawings({
   canvasColor,
   canvasWidth,
   canvasHeight,
+  preparedScene,
   turtle,
   spriteUrl,
+  onReadyChange,
 }: {
   drawings: DrawCommand[];
   drawingsLen: number;
   canvasColor: string;
   canvasWidth: number;
   canvasHeight: number;
+  preparedScene?: SvgScene | null;
   /** When provided, render a small turtle sprite at the turtle's
    *  position so the user keeps seeing the turtle once a run ends.
    *  KDE KTurtle behaves the same way: the turtle persists on the
@@ -254,73 +382,94 @@ const SvgDrawings = memo(function SvgDrawings({
    *  `hide`. */
   turtle?: { x: number; y: number; angle: number; visible: boolean };
   spriteUrl?: string;
+  onReadyChange?: (ready: boolean) => void;
 }) {
-  const elements = useMemo(() => {
-    let bgColor = canvasColor;
-    let els: React.ReactElement[] = [];
-    for (let i = 0; i < drawingsLen; i++) {
-      const cmd = drawings[i];
-      switch (cmd.type) {
-        case 'clear':
-          els = [];
-          break;
-        case 'canvasColor':
-          if (cmd.color) bgColor = cmd.color;
-          els = [];
-          break;
-        case 'line': {
-          if (
-            cmd.x1 === undefined || cmd.y1 === undefined ||
-            cmd.x2 === undefined || cmd.y2 === undefined
-          ) break;
-          els.push(
-            <line
-              key={i}
-              x1={cmd.x1}
-              y1={cmd.y1}
-              x2={cmd.x2}
-              y2={cmd.y2}
-              stroke={cmd.color || '#000'}
-              strokeWidth={cmd.width ?? 1}
-              strokeLinecap="square"
-              strokeLinejoin="bevel"
-            />,
-          );
-          break;
-        }
-        case 'text': {
-          if (cmd.x1 === undefined || cmd.y1 === undefined || !cmd.text) break;
-          els.push(
-            <text
-              key={i}
-              x={cmd.x1}
-              y={cmd.y1}
-              fill={cmd.color || '#000'}
-              fontSize={cmd.fontSize ?? 12}
-              fontFamily="sans-serif"
-              dominantBaseline="hanging"
-            >
-              {cmd.text}
-            </text>,
-          );
-          break;
-        }
-      }
+  const [sceneUrl, setSceneUrl] = useState<string | null>(null);
+  const sceneUrlRef = useRef<string | null>(null);
+  const revokeTimersRef = useRef<number[]>([]);
+
+  const revokeSceneUrlSoon = useCallback((url: string) => {
+    const timer = window.setTimeout(() => {
+      URL.revokeObjectURL(url);
+      revokeTimersRef.current = revokeTimersRef.current.filter(id => id !== timer);
+    }, 2000);
+    revokeTimersRef.current.push(timer);
+  }, []);
+
+  const replaceSceneUrl = useCallback((nextUrl: string | null) => {
+    const prevUrl = sceneUrlRef.current;
+    sceneUrlRef.current = nextUrl;
+    setSceneUrl(nextUrl);
+    if (prevUrl) revokeSceneUrlSoon(prevUrl);
+  }, [revokeSceneUrlSoon]);
+
+  useEffect(() => () => {
+    for (const timer of revokeTimersRef.current) window.clearTimeout(timer);
+    revokeTimersRef.current = [];
+    if (sceneUrlRef.current) {
+      URL.revokeObjectURL(sceneUrlRef.current);
+      sceneUrlRef.current = null;
     }
-    return { bgColor, els };
-  }, [drawings, drawingsLen, canvasColor]);
+  }, []);
+
+  useEffect(() => {
+    let alive = true;
+    let pendingUrl: string | null = null;
+    onReadyChange?.(false);
+
+    const publishScene = (scene: SvgScene) => {
+      const nextUrl = svgSceneToObjectUrl(scene, canvasWidth, canvasHeight);
+      pendingUrl = nextUrl;
+      const img = new Image();
+      img.decoding = 'async';
+      img.onload = () => {
+        if (!alive) {
+          URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        pendingUrl = null;
+        replaceSceneUrl(nextUrl);
+        onReadyChange?.(true);
+      };
+      img.onerror = () => {
+        if (!alive) {
+          URL.revokeObjectURL(nextUrl);
+          return;
+        }
+        pendingUrl = null;
+        replaceSceneUrl(nextUrl);
+        onReadyChange?.(true);
+      };
+      img.src = nextUrl;
+    };
+
+    if (preparedScene) {
+      publishScene(preparedScene);
+    } else if (drawingsLen <= SVG_WORKER_THRESHOLD) {
+      publishScene(buildSvgScene(drawings, drawingsLen, canvasColor));
+    }
+
+    return () => {
+      alive = false;
+      if (pendingUrl) revokeSceneUrlSoon(pendingUrl);
+    };
+  }, [drawings, drawingsLen, canvasColor, canvasWidth, canvasHeight, preparedScene, onReadyChange, replaceSceneUrl, revokeSceneUrlSoon]);
 
   return (
     <>
-      <rect
-        x={0}
-        y={0}
-        width={canvasWidth}
-        height={canvasHeight}
-        fill={elements.bgColor}
-      />
-      {elements.els}
-      {turtle && turtle.visible && spriteUrl && (
+      {sceneUrl && (
+        <image
+          href={sceneUrl}
+          xlinkHref={sceneUrl}
+          x={0}
+          y={0}
+          width={canvasWidth}
+          height={canvasHeight}
+          preserveAspectRatio="none"
+          style={{ pointerEvents: 'none' }}
+        />
+      )}
+      {turtle && turtle.visible && spriteUrl && sceneUrl && (
         <image
           href={spriteUrl}
           xlinkHref={spriteUrl}
@@ -348,6 +497,7 @@ const SvgDrawings = memo(function SvgDrawings({
 // drawing is what caused the original "laggy on big programs + zoom" feel.
 const RENDER_SCALE_CAP = 8;
 const RENDER_SCALE_MIN = 1;
+
 function bucketRenderScale(visualScale: number): number {
   const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
   const target = Math.max(RENDER_SCALE_MIN, Math.min(RENDER_SCALE_CAP, visualScale * dpr));
@@ -357,6 +507,18 @@ function bucketRenderScale(visualScale: number): number {
   const step = Math.SQRT2;
   const bucket = Math.pow(step, Math.ceil(Math.log(target) / Math.log(step)));
   return Math.max(RENDER_SCALE_MIN, Math.min(RENDER_SCALE_CAP, bucket));
+}
+
+function targetRasterScale(
+  visualScale: number,
+  running: boolean,
+  svgActive: boolean,
+  commandCount: number,
+): number {
+  if (svgActive) return RENDER_SCALE_MIN;
+  if (running) return RENDER_SCALE_MIN;
+  if (commandCount > RASTER_ZOOM_REPAINT_COMMAND_LIMIT) return RENDER_SCALE_MIN;
+  return bucketRenderScale(visualScale);
 }
 
 const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
@@ -369,11 +531,101 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const turtleRef = useRef<HTMLCanvasElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+  const svgOverlayRef = useRef<SVGSVGElement>(null);
+  const [viewportSize, setViewportSize] = useState({ width: 1, height: 1 });
+  const [preparedSvgScene, setPreparedSvgScene] = useState<SvgScene | null>(null);
 
-  // Internal zoom and pan (in viewport pixels). We compose externalScale
-  // (from UI slider) with zoom for the final visual scale.
+  // Internal zoom and pan in untransformed viewport CSS pixels. Event
+  // coordinates are converted from the transformed visual rect when the
+  // desktop shell is UI-scaled, keeping cursor-anchored zoom exact.
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [svgPromotionAllowed, setSvgPromotionAllowed] = useState(false);
+  const [svgOverlayReady, setSvgOverlayReady] = useState(false);
+  const [svgPromotionSuppressed, setSvgPromotionSuppressed] = useState(false);
+  const svgPromotionTimerRef = useRef<number | null>(null);
+  const gestureIdleTimerRef = useRef<number | null>(null);
+  const svgPromotionAllowedRef = useRef(false);
+  const svgPromotionPendingRef = useRef(false);
+  const svgWorkerRef = useRef<Worker | null>(null);
+  const svgWorkerRunIdRef = useRef(0);
+  const svgWorkerFedLenRef = useRef(0);
+  const svgWorkerCanvasColorRef = useRef('');
+  const zoomRef = useRef(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const zoomPanRafRef = useRef<number | null>(null);
+  const wheelZoomRafRef = useRef<number | null>(null);
+  const wheelDeltaRef = useRef(0);
+  const gestureTransformActiveRef = useRef(false);
+
+  useEffect(() => {
+    if (gestureTransformActiveRef.current) return;
+    zoomRef.current = zoom;
+  }, [zoom]);
+  useEffect(() => {
+    if (gestureTransformActiveRef.current) return;
+    panRef.current = pan;
+  }, [pan]);
+
+  const setSvgPromotionAllowedStable = useCallback((next: boolean) => {
+    if (svgPromotionAllowedRef.current === next) return;
+    svgPromotionAllowedRef.current = next;
+    setSvgPromotionAllowed(next);
+  }, []);
+
+  const postSvgWorkerMessage = useCallback((message: SvgWorkerRequest) => {
+    if (!svgWorkerRef.current) {
+      svgWorkerRef.current = new Worker(
+        new URL('../workers/svgSceneWorker.ts', import.meta.url),
+        { type: 'module' },
+      );
+      svgWorkerRef.current.onmessage = (event: MessageEvent<SvgWorkerResponse>) => {
+        if (event.data.id !== svgWorkerRunIdRef.current) return;
+        setPreparedSvgScene(event.data.scene);
+      };
+    }
+    svgWorkerRef.current.postMessage(message);
+  }, []);
+
+  const resetPreparedSvgWorker = useCallback((canvasColor: string) => {
+    const id = svgWorkerRunIdRef.current + 1;
+    svgWorkerRunIdRef.current = id;
+    svgWorkerFedLenRef.current = 0;
+    svgWorkerCanvasColorRef.current = canvasColor;
+    setPreparedSvgScene(null);
+    postSvgWorkerMessage({ type: 'reset', id, canvasColor });
+  }, [postSvgWorkerMessage]);
+
+  const feedPreparedSvgWorker = useCallback((drawingsArr: DrawCommand[], drawingsLength: number, canvasColor: string) => {
+    if (drawingsLength <= SVG_WORKER_THRESHOLD) return;
+    if (svgWorkerCanvasColorRef.current !== canvasColor || svgWorkerRunIdRef.current === 0) {
+      resetPreparedSvgWorker(canvasColor);
+    }
+    const start = svgWorkerFedLenRef.current;
+    if (drawingsLength <= start) return;
+    const commands = drawingsArr.slice(start, drawingsLength);
+    svgWorkerFedLenRef.current = drawingsLength;
+    postSvgWorkerMessage({
+      type: 'append',
+      id: svgWorkerRunIdRef.current,
+      commands,
+    });
+  }, [postSvgWorkerMessage, resetPreparedSvgWorker]);
+
+  const requestPreparedSvgScene = useCallback((drawingsArr: DrawCommand[], drawingsLength: number, canvasColor: string) => {
+    if (drawingsLength <= SVG_WORKER_THRESHOLD) {
+      setPreparedSvgScene(null);
+      return;
+    }
+    feedPreparedSvgWorker(drawingsArr, drawingsLength, canvasColor);
+    postSvgWorkerMessage({ type: 'build', id: svgWorkerRunIdRef.current });
+  }, [feedPreparedSvgWorker, postSvgWorkerMessage]);
+
+  useEffect(() => {
+    if (!isRunning) return;
+    resetPreparedSvgWorker(turtle.canvasColor || '#ffffff');
+  }, [isRunning, resetPreparedSvgWorker, turtle.canvasColor]);
 
   // Bumps once the rasterized turtle sprite is ready. Included in the
   // sprite-drawing effect's dep list so the very first paint happens as
@@ -410,19 +662,166 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     drawings: DrawCommand[];
     drawingsLen: number;
   } | null>(null);
+  const preservedFrameRef = useRef<{
+    turtle: TurtleState;
+    drawings: DrawCommand[];
+    drawingsLen: number;
+  } | null>(null);
 
   const effectiveZoom = zoom * externalScale;
+  const svgOverlayActive = !isRunning && dLen > 0;
+  const showSvgOverlay = svgOverlayActive && svgPromotionAllowed && svgOverlayReady;
 
-  // Bucketed supersampling factor — drives canvas bitmap resolution so
-  // zooming in doesn't pixelate the drawing. Updated only when the bucket
-  // changes (not on every tiny zoom tick), and that bucket change is what
-  // forces the one expensive full repaint; in between, zoom just scales the
-  // already-crisp bitmap via CSS.
-  const [renderScale, setRenderScale] = useState(() => bucketRenderScale(1));
+  const clearSvgPromotionTimer = useCallback(() => {
+    if (svgPromotionTimerRef.current === null) return;
+    window.clearTimeout(svgPromotionTimerRef.current);
+    svgPromotionTimerRef.current = null;
+  }, []);
+
+  const clearGestureIdleTimer = useCallback(() => {
+    if (gestureIdleTimerRef.current === null) return;
+    window.clearTimeout(gestureIdleTimerRef.current);
+    gestureIdleTimerRef.current = null;
+  }, []);
+
+  const scheduleSvgPromotion = useCallback((delayMs: number) => {
+    clearSvgPromotionTimer();
+    if (!svgOverlayActive || svgPromotionSuppressed) return;
+    svgPromotionTimerRef.current = window.setTimeout(() => {
+      svgPromotionTimerRef.current = null;
+      setSvgPromotionAllowedStable(true);
+    }, delayMs);
+  }, [clearSvgPromotionTimer, setSvgPromotionAllowedStable, svgOverlayActive, svgPromotionSuppressed]);
+
+  const deferPendingSvgPromotion = useCallback(() => {
+    if (!svgOverlayActive || svgPromotionSuppressed) return;
+    clearGestureIdleTimer();
+    if (svgPromotionAllowedRef.current) return;
+    setSvgPromotionAllowedStable(false);
+    gestureIdleTimerRef.current = window.setTimeout(() => {
+      gestureIdleTimerRef.current = null;
+      scheduleSvgPromotion(svgOverlayReady ? 0 : 180);
+    }, 180);
+  }, [clearGestureIdleTimer, scheduleSvgPromotion, setSvgPromotionAllowedStable, svgOverlayActive, svgOverlayReady, svgPromotionSuppressed]);
+
+  const viewportPointFromClient = useCallback((clientX: number, clientY: number) => {
+    const vp = viewportRef.current;
+    if (!vp) return { x: 0, y: 0 };
+    const rect = vp.getBoundingClientRect();
+    const scaleX = rect.width > 0 ? vp.clientWidth / rect.width : 1;
+    const scaleY = rect.height > 0 ? vp.clientHeight / rect.height : 1;
+    return {
+      x: (clientX - rect.left) * scaleX,
+      y: (clientY - rect.top) * scaleY,
+    };
+  }, []);
+
+  const svgViewBoxFor = useCallback((nextZoom: number, nextPan: { x: number; y: number }) => {
+    const vp = viewportRef.current;
+    const total = Math.max(MIN_ZOOM * externalScale, nextZoom * externalScale);
+    const viewW = Math.max(1, vp?.clientWidth ?? viewportSize.width);
+    const viewH = Math.max(1, vp?.clientHeight ?? viewportSize.height);
+    return `${fmtSvgNumber(-nextPan.x / total)} ${fmtSvgNumber(-nextPan.y / total)} ${fmtSvgNumber(viewW / total)} ${fmtSvgNumber(viewH / total)}`;
+  }, [externalScale, viewportSize.height, viewportSize.width]);
+
+  const writeViewportTransform = useCallback((nextZoom: number, nextPan: { x: number; y: number }) => {
+    const total = nextZoom * externalScale;
+    const stage = stageRef.current;
+    if (stage) {
+      stage.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0) scale(${total})`;
+    }
+    const svg = svgOverlayRef.current;
+    if (svg) {
+      svg.setAttribute('viewBox', svgViewBoxFor(nextZoom, nextPan));
+    }
+  }, [externalScale, svgViewBoxFor]);
+
+  const commitZoomPan = useCallback((nextZoom: number, nextPan: { x: number; y: number }) => {
+    gestureTransformActiveRef.current = true;
+    zoomRef.current = nextZoom;
+    panRef.current = nextPan;
+    writeViewportTransform(nextZoom, nextPan);
+
+    if (zoomPanRafRef.current !== null) return;
+    zoomPanRafRef.current = requestAnimationFrame(() => {
+      zoomPanRafRef.current = null;
+      const z = zoomRef.current;
+      const p = panRef.current;
+      setZoom(prev => (prev === z ? prev : z));
+      setPan(prev => (prev.x === p.x && prev.y === p.y ? prev : p));
+    });
+  }, [writeViewportTransform]);
+
+  const setZoomAroundViewportPoint = useCallback((nextZoom: number, point: { x: number; y: number }) => {
+    const prevZoom = zoomRef.current;
+    const prevPan = panRef.current;
+    const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, nextZoom));
+    if (newZoom === prevZoom) return;
+
+    const oldScale = prevZoom * externalScale;
+    const newScale = newZoom * externalScale;
+    const worldX = (point.x - prevPan.x) / oldScale;
+    const worldY = (point.y - prevPan.y) / oldScale;
+    const nextPan = {
+      x: point.x - worldX * newScale,
+      y: point.y - worldY * newScale,
+    };
+
+    commitZoomPan(newZoom, nextPan);
+  }, [commitZoomPan, externalScale]);
+
+  const setZoomAroundViewportCenter = useCallback((nextZoom: number) => {
+    const vp = viewportRef.current;
+    setZoomAroundViewportPoint(nextZoom, {
+      x: vp ? vp.clientWidth / 2 : 0,
+      y: vp ? vp.clientHeight / 2 : 0,
+    });
+  }, [setZoomAroundViewportPoint]);
+
+  useLayoutEffect(() => {
+    writeViewportTransform(zoomRef.current, panRef.current);
+  });
+
+  useEffect(() => () => {
+    if (zoomPanRafRef.current !== null) {
+      cancelAnimationFrame(zoomPanRafRef.current);
+      zoomPanRafRef.current = null;
+    }
+    if (wheelZoomRafRef.current !== null) {
+      cancelAnimationFrame(wheelZoomRafRef.current);
+      wheelZoomRafRef.current = null;
+    }
+    clearGestureIdleTimer();
+    clearSvgPromotionTimer();
+    svgWorkerRef.current?.terminate();
+    svgWorkerRef.current = null;
+  }, [clearGestureIdleTimer, clearSvgPromotionTimer]);
+
   useEffect(() => {
-    const target = bucketRenderScale(effectiveZoom);
+    clearSvgPromotionTimer();
+    svgPromotionPendingRef.current = false;
+    setSvgPromotionAllowedStable(false);
+    setSvgOverlayReady(false);
+    if (!svgOverlayActive) return;
+    if (svgPromotionSuppressed) return;
+
+    svgPromotionPendingRef.current = true;
+    setSvgPromotionAllowedStable(true);
+
+    return clearSvgPromotionTimer;
+  }, [clearSvgPromotionTimer, dLen, setSvgPromotionAllowedStable, svgOverlayActive, svgPromotionSuppressed]);
+
+  // Raster scale is intentionally decoupled from idle SVG zoom. While a
+  // program is running we keep canvas paints cheap and let CSS transforms
+  // handle the interaction. Once the crisp SVG overlay is active, the
+  // hidden bitmap stays at 1x so wheel/pinch zoom never triggers a heavy
+  // canvas repaint behind the vector layer.
+  const [renderScale, setRenderScale] = useState(() => targetRasterScale(1, false, false, 0));
+  useEffect(() => {
+    if (svgOverlayActive && !showSvgOverlay) return;
+    const target = targetRasterScale(effectiveZoom, isRunning, showSvgOverlay, dLen);
     setRenderScale(prev => (prev === target ? prev : target));
-  }, [effectiveZoom]);
+  }, [dLen, effectiveZoom, isRunning, svgOverlayActive, showSvgOverlay]);
   // Mirror into a ref so the imperative `renderFrame` path can see the
   // current scale without going through a React commit.
   useEffect(() => { renderScaleRef.current = renderScale; }, [renderScale]);
@@ -555,8 +954,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   // Initial fit, and also refit when canvas size changes.
   useLayoutEffect(() => {
     const z = computeFitZoom();
-    setZoom(z);
-    setPan(centerPan(z));
+    commitZoomPan(z, centerPan(z));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [turtle.canvasWidth, turtle.canvasHeight]);
 
@@ -571,24 +969,25 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     if (!vp) return;
     let lastW = vp.clientWidth;
     let lastH = vp.clientHeight;
+    setViewportSize({ width: Math.max(1, lastW), height: Math.max(1, lastH) });
     const ro = new ResizeObserver(() => {
       const w = vp.clientWidth;
       const h = vp.clientHeight;
       if (w === lastW && h === lastH) return;
       lastW = w;
       lastH = h;
+      setViewportSize({ width: Math.max(1, w), height: Math.max(1, h) });
       // Only auto-refit if the user hasn't taken over the view (first
       // wheel / drag / pinch flips userAdjustedRef). Otherwise we'd
       // fight their zoom every time they nudge the split-pane.
       if (!userAdjustedRef.current) {
         const z = computeFitZoom();
-        setZoom(z);
-        setPan(centerPan(z));
+        commitZoomPan(z, centerPan(z));
       }
     });
     ro.observe(vp);
     return () => ro.disconnect();
-  }, [computeFitZoom, centerPan]);
+  }, [commitZoomPan, computeFitZoom, centerPan]);
 
   // Notify parent of zoom changes (e.g., to show "135%" in a chip).
   useEffect(() => {
@@ -609,22 +1008,22 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         // changes (phone rotation, split drag) will re-fit again.
         userAdjustedRef.current = false;
         const z = computeFitZoom();
-        setZoom(z);
-        setPan(centerPan(z));
+        commitZoomPan(z, centerPan(z));
       },
       fitToScreen: () => {
         userAdjustedRef.current = false;
         const z = computeFitZoom();
-        setZoom(z);
-        setPan(centerPan(z));
+        commitZoomPan(z, centerPan(z));
       },
       zoomIn: () => {
         userAdjustedRef.current = true;
-        setZoom(z => Math.min(MAX_ZOOM, z * 1.2));
+        deferPendingSvgPromotion();
+        setZoomAroundViewportCenter(zoomRef.current * 1.2);
       },
       zoomOut: () => {
         userAdjustedRef.current = true;
-        setZoom(z => Math.max(MIN_ZOOM, z / 1.2));
+        deferPendingSvgPromotion();
+        setZoomAroundViewportCenter(zoomRef.current / 1.2);
       },
       getZoom: () => effectiveZoom,
       renderFrame: (ts, d, dl) => {
@@ -632,25 +1031,72 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         // canvases without triggering any React state update, so the
         // rest of the app (toolbar, editor, inspector, split panes)
         // doesn't re-render 60× a second just because the turtle moved.
+        setSvgPromotionSuppressed(false);
+        svgPromotionPendingRef.current = false;
         liveInputsRef.current = { turtle: ts, drawings: d, drawingsLen: dl };
+        feedPreparedSvgWorker(d, dl, ts.canvasColor);
         paintDrawings(ts, d, dl);
         paintSprite(ts);
       },
-      endRun: () => {
+      preserveLiveFrame: (ts, d, dl) => {
+        // Preserve the last committed frame without replaying unpainted
+        // command history. Finish may promote this frame to SVG; Stop can
+        // suppress promotion in endRun() and keep the raster frame.
+        liveInputsRef.current = { turtle: ts, drawings: d, drawingsLen: dl };
+        preservedFrameRef.current = { turtle: ts, drawings: d, drawingsLen: dl };
+        lastDrawingsRef.current = d;
+        drawnCountRef.current = dl;
+        paintSprite(ts);
+      },
+      endRun: (options) => {
         // Props are now the authoritative state — drop the live cache
         // so subsequent zoom/resize repaints read the props.
         liveInputsRef.current = null;
+        const suppressSvg = options?.promoteToSvg === false;
+        setSvgPromotionSuppressed(suppressSvg);
+        if (suppressSvg) {
+          svgPromotionPendingRef.current = false;
+          svgPromotionAllowedRef.current = false;
+          setSvgPromotionAllowed(false);
+          setSvgOverlayReady(false);
+          setPreparedSvgScene(null);
+        } else {
+          svgPromotionPendingRef.current = true;
+          svgPromotionAllowedRef.current = true;
+          const preserved = preservedFrameRef.current;
+          if (preserved) {
+            requestPreparedSvgScene(
+              preserved.drawings,
+              preserved.drawingsLen,
+              preserved.turtle.canvasColor || '#ffffff',
+            );
+          }
+          setSvgPromotionAllowed(true);
+        }
       },
     }),
-    [computeFitZoom, centerPan, effectiveZoom, paintDrawings, paintSprite],
+    [commitZoomPan, computeFitZoom, centerPan, effectiveZoom, paintDrawings, paintSprite, deferPendingSvgPromotion, feedPreparedSvgWorker, requestPreparedSvgScene, setZoomAroundViewportCenter],
   );
 
-  // ── Wheel-to-zoom (zooms to cursor, like Figma/Photoshop). Wheel events
-  // over the canvas are always captured so the page doesn't scroll while
-  // the user is zooming. Any wheel inside the viewport zooms.
+  // ── Wheel-to-zoom. Wheel/trackpad streams are noisy, so zooming around
+  // the viewport center feels steadier than chasing the cursor on every
+  // tick. Touch pinch still zooms around the gesture midpoint below.
+  // Wheel events over the canvas are always captured so the page doesn't
+  // scroll while the user is zooming.
   useEffect(() => {
     const vp = viewportRef.current;
     if (!vp) return;
+
+    const flushWheelZoom = () => {
+      wheelZoomRafRef.current = null;
+      const delta = wheelDeltaRef.current;
+      wheelDeltaRef.current = 0;
+      if (delta === 0) return;
+
+      const clampedDelta = Math.max(-240, Math.min(240, delta));
+      const factor = Math.exp(-clampedDelta * 0.0012);
+      setZoomAroundViewportCenter(zoomRef.current * factor);
+    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -659,29 +1105,23 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       let delta = e.deltaY;
       if (e.deltaMode === 1) delta *= 16;
       else if (e.deltaMode === 2) delta *= 100;
-      const factor = Math.exp(-delta * 0.0015);
-      setZoom(prevZoom => {
-        const newZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, prevZoom * factor));
-        // Adjust pan so the point under the cursor stays fixed.
-        const rect = vp.getBoundingClientRect();
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        setPan(prevPan => {
-          const sx = externalScale; // constant during this callback
-          const worldX = (mx - prevPan.x) / (prevZoom * sx);
-          const worldY = (my - prevPan.y) / (prevZoom * sx);
-          return {
-            x: mx - worldX * newZoom * sx,
-            y: my - worldY * newZoom * sx,
-          };
-        });
-        return newZoom;
-      });
+      wheelDeltaRef.current += delta;
+      deferPendingSvgPromotion();
+      if (wheelZoomRafRef.current === null) {
+        wheelZoomRafRef.current = requestAnimationFrame(flushWheelZoom);
+      }
     };
 
     vp.addEventListener('wheel', onWheel, { passive: false });
-    return () => vp.removeEventListener('wheel', onWheel);
-  }, [externalScale]);
+    return () => {
+      vp.removeEventListener('wheel', onWheel);
+      if (wheelZoomRafRef.current !== null) {
+        cancelAnimationFrame(wheelZoomRafRef.current);
+        wheelZoomRafRef.current = null;
+      }
+      wheelDeltaRef.current = 0;
+    };
+  }, [deferPendingSvgPromotion, setZoomAroundViewportCenter]);
 
   // ── Pan + pinch-zoom (unified pointer handling).
   //
@@ -735,24 +1175,15 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       panning = false;
       pinchStartDist = Math.max(1, dist(a, b));
       pinchStartMid = midpoint(a, b);
-      setZoom(z => {
-        pinchStartZoom = z;
-        return z;
-      });
-      setPan(p => {
-        pinchStartPan = p;
-        return p;
-      });
+      pinchStartZoom = zoomRef.current;
+      pinchStartPan = panRef.current;
     };
 
     const beginPan = (x: number, y: number) => {
       panning = true;
       pinching = false;
       panStartClient = { x, y };
-      setPan(p => {
-        panStartValue = p;
-        return p;
-      });
+      panStartValue = panRef.current;
       vp.style.cursor = 'grabbing';
     };
 
@@ -762,13 +1193,14 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       if (e.button === 2) return;
       if (pointers.size >= 2) return;
 
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const point = viewportPointFromClient(e.clientX, e.clientY);
+      pointers.set(e.pointerId, point);
       try { vp.setPointerCapture(e.pointerId); } catch { /* ignore */ }
 
       if (pointers.size === 2) {
         beginPinch();
       } else {
-        beginPan(e.clientX, e.clientY);
+        beginPan(point.x, point.y);
       }
       userAdjustedRef.current = true;
       // Prevent iOS/Android from treating this as a scroll gesture.
@@ -777,12 +1209,13 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
 
     const onPointerMove = (e: PointerEvent) => {
       if (!pointers.has(e.pointerId)) return;
-      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const point = viewportPointFromClient(e.clientX, e.clientY);
+      pointers.set(e.pointerId, point);
+      deferPendingSvgPromotion();
 
       if (pinching && pointers.size >= 2) {
         const { a, b } = first();
         if (!a || !b) return;
-        const rect = vp.getBoundingClientRect();
         const d = Math.max(1, dist(a, b));
         const mid = midpoint(a, b);
         const ratio = d / pinchStartDist;
@@ -793,20 +1226,19 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
         // Pinch math: keep the world-point originally under the pinch's
         // midpoint locked under the *current* midpoint. That gives both
         // scale-around-midpoint AND two-finger-drag panning in one formula.
-        //   worldUnderStart = (pinchStartMid - rect - pinchStartPan) / (pinchStartZoom * sx)
-        //   newPan = currentMid - rect - worldUnderStart * (newZoom * sx)
+        //   worldUnderStart = (pinchStartMid - pinchStartPan) / (pinchStartZoom * sx)
+        //   newPan = currentMid - worldUnderStart * (newZoom * sx)
         const sx = externalScale;
-        const worldX = (pinchStartMid.x - rect.left - pinchStartPan.x) / (pinchStartZoom * sx);
-        const worldY = (pinchStartMid.y - rect.top - pinchStartPan.y) / (pinchStartZoom * sx);
-        setZoom(newZoom);
-        setPan({
-          x: mid.x - rect.left - worldX * newZoom * sx,
-          y: mid.y - rect.top - worldY * newZoom * sx,
+        const worldX = (pinchStartMid.x - pinchStartPan.x) / (pinchStartZoom * sx);
+        const worldY = (pinchStartMid.y - pinchStartPan.y) / (pinchStartZoom * sx);
+        commitZoomPan(newZoom, {
+          x: mid.x - worldX * newZoom * sx,
+          y: mid.y - worldY * newZoom * sx,
         });
       } else if (panning) {
-        setPan({
-          x: panStartValue.x + (e.clientX - panStartClient.x),
-          y: panStartValue.y + (e.clientY - panStartClient.y),
+        commitZoomPan(zoomRef.current, {
+          x: panStartValue.x + (point.x - panStartClient.x),
+          y: panStartValue.y + (point.y - panStartClient.y),
         });
       }
     };
@@ -849,7 +1281,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       vp.removeEventListener('gesturechange', blockGesture as EventListener);
       vp.removeEventListener('gestureend', blockGesture as EventListener);
     };
-  }, [externalScale]);
+  }, [commitZoomPan, externalScale, deferPendingSvgPromotion, viewportPointFromClient]);
 
   // React-driven draw: fires on prop / state changes (e.g. run completion,
   // renderScale change from zoom bucket). During a live run the interpreter
@@ -863,6 +1295,8 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   // "a run has been painted live since the last prop change" by consulting
   // `liveInputsRef` — if it's fresher than the incoming props, use it.
   useEffect(() => {
+    if (showSvgOverlay) return;
+    if (svgOverlayActive && (svgPromotionAllowed || svgPromotionPendingRef.current)) return;
     const live = liveInputsRef.current;
     const useLive = live && live.drawingsLen > dLen;
     const ts = useLive ? live!.turtle : turtle;
@@ -871,11 +1305,15 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     paintDrawings(ts, d, dl);
   }, [
     paintDrawings,
+    showSvgOverlay,
+    svgOverlayActive,
+    svgPromotionAllowed,
     turtle, turtle.canvasWidth, turtle.canvasHeight, turtle.canvasColor,
     drawings, dLen, renderScale,
   ]);
 
   useEffect(() => {
+    if (showSvgOverlay) return;
     const live = liveInputsRef.current;
     // Prefer live turtle during a run (same reasoning as above — props
     // are reset to the initial state until `runCode` resolves).
@@ -883,6 +1321,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
     paintSprite(ts);
   }, [
     paintSprite,
+    showSvgOverlay,
     turtle, turtle.x, turtle.y, turtle.angle, turtle.visible,
     turtle.canvasWidth, turtle.canvasHeight,
     spriteTick, renderScale,
@@ -891,6 +1330,11 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
   const w = turtle.canvasWidth;
   const h = turtle.canvasHeight;
   const totalScale = effectiveZoom;
+  const currentTotalScale = zoomRef.current * externalScale;
+  const currentPan = panRef.current;
+  const currentViewW = Math.max(1, viewportSize.width);
+  const currentViewH = Math.max(1, viewportSize.height);
+  const initialSvgViewBox = `${fmtSvgNumber(-currentPan.x / currentTotalScale)} ${fmtSvgNumber(-currentPan.y / currentTotalScale)} ${fmtSvgNumber(currentViewW / currentTotalScale)} ${fmtSvgNumber(currentViewH / currentTotalScale)}`;
 
   // Checkerboard pattern for "outside-the-canvas" area — gives a visual
   // sense of infinite space and matches classic image-editor conventions.
@@ -914,13 +1358,14 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
       >
         {/* Canvas stage positioned via pan/zoom */}
         <div
+          ref={stageRef}
           style={{
             position: 'absolute',
             left: 0,
             top: 0,
             width: w,
             height: h,
-            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${totalScale})`,
+            transform: `translate3d(${currentPan.x}px, ${currentPan.y}px, 0) scale(${currentTotalScale})`,
             transformOrigin: '0 0',
             boxShadow:
               '0 0 0 1px rgba(228, 223, 210, 0.9), 0 18px 60px -24px rgba(26, 24, 20, 0.25)',
@@ -938,7 +1383,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               left: 0,
               // Hide the raster canvas when idle and SVG overlay is active.
               // This ensures the crisp SVG is the only visible layer.
-              visibility: (!isRunning && dLen > 0) ? 'hidden' : 'visible',
+              visibility: showSvgOverlay ? 'hidden' : 'visible',
               imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
@@ -950,30 +1395,31 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               position: 'absolute',
               top: 0,
               left: 0,
-              visibility: (!isRunning && dLen > 0) ? 'hidden' : 'visible',
+              visibility: showSvgOverlay ? 'hidden' : 'visible',
               imageRendering: totalScale > RENDER_SCALE_CAP * 1.5 ? 'pixelated' : 'auto',
             }}
           />
         </div>
       </div>
-      {/* SVG overlay — rendered OUTSIDE the CSS-scaled container so the
-          browser rasterizes it as true vectors at display resolution.
-          Uses the same pan/zoom transform but as an SVG viewBox shift,
-          so zooming in stays perfectly crisp at any magnification. */}
-      {!isRunning && dLen > 0 && (
+      {/* SVG overlay — fixed to the viewport and panned/zoomed by viewBox.
+          This keeps the final result as true vector graphics without
+          creating a massive CSS-sized SVG element at high zoom. */}
+      {svgOverlayActive && svgPromotionAllowed && !svgPromotionSuppressed && (
         <svg
+          ref={svgOverlayRef}
           xmlns="http://www.w3.org/2000/svg"
-          viewBox={`0 0 ${w} ${h}`}
+          viewBox={initialSvgViewBox}
+          preserveAspectRatio="none"
           style={{
             position: 'absolute',
             left: 0,
             top: 0,
-            width: w * totalScale,
-            height: h * totalScale,
-            transform: `translate(${pan.x}px, ${pan.y}px)`,
-            transformOrigin: '0 0',
+            width: '100%',
+            height: '100%',
+            visibility: showSvgOverlay ? 'visible' : 'hidden',
             pointerEvents: 'none',
             overflow: 'hidden',
+            contain: 'strict',
           }}
         >
           <SvgDrawings
@@ -982,6 +1428,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
             canvasColor={turtle.canvasColor || '#ffffff'}
             canvasWidth={w}
             canvasHeight={h}
+            preparedScene={preparedSvgScene}
             turtle={{
               x: turtle.x,
               y: turtle.y,
@@ -989,6 +1436,7 @@ const TurtleCanvasImpl = forwardRef<TurtleCanvasHandle, TurtleCanvasProps>(
               visible: turtle.visible,
             }}
             spriteUrl={LOGO_URL}
+            onReadyChange={setSvgOverlayReady}
           />
         </svg>
       )}

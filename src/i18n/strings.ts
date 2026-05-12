@@ -55,6 +55,7 @@ const en: Dict = {
   'toolbar.ready': 'Ready',
   'toolbar.colorPicker': 'Color picker',
   'toolbar.direction': 'Direction',
+  'toolbar.tools': 'Tools',
   'toolbar.more': 'More',
 
   // Panes
@@ -228,6 +229,7 @@ const ru: Dict = {
   'toolbar.ready': 'Готово',
   'toolbar.colorPicker': 'Выбор цвета',
   'toolbar.direction': 'Направление',
+  'toolbar.tools': 'Инструменты',
   'toolbar.more': 'Ещё',
 
   'pane.workspace': 'Рабочая область',
@@ -391,6 +393,7 @@ const hy: Dict = {
   'toolbar.ready': 'Պատրաստ է',
   'toolbar.colorPicker': 'Գույնի ընտրիչ',
   'toolbar.direction': 'Ուղղություն',
+  'toolbar.tools': 'Գործիքներ',
   'toolbar.more': 'Ավելին',
 
   'pane.workspace': 'Աշխատատարածք',

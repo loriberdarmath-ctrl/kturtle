@@ -46,6 +46,8 @@ export interface InterpreterResult {
   errors: TurtleError[];
   /** Legacy single-error field. Always equals `errors[0]` when present. */
   error?: TurtleError;
+  /** True when execution ended because the user pressed Stop. */
+  cancelled: boolean;
 }
 
 /**
@@ -350,6 +352,7 @@ export class Interpreter {
       functionNames: Array.from(this.functions.keys()),
       errors: this.errors.slice(),
       error: this.errors[0],
+      cancelled: this.cancelled,
     };
   }
 
@@ -473,6 +476,10 @@ export class Interpreter {
             if (this.shouldExit || this.returnValue !== null) break;
             await this.executeNode(stmt);
           }
+          if (!this.shouldExit && this.returnValue === null) {
+            const p = this.step();
+            if (p) await p;
+          }
         }
         return null;
       }
@@ -483,6 +490,10 @@ export class Interpreter {
           for (const stmt of node.body) {
             if (this.shouldExit || this.returnValue !== null) break;
             await this.executeNode(stmt);
+          }
+          if (!this.shouldExit && this.returnValue === null) {
+            const p = this.step();
+            if (p) await p;
           }
         }
         return null;
@@ -499,6 +510,10 @@ export class Interpreter {
           for (const stmt of node.body) {
             if (this.shouldExit || this.returnValue !== null) break;
             await this.executeNode(stmt);
+          }
+          if (!this.shouldExit && this.returnValue === null) {
+            const p = this.step();
+            if (p) await p;
           }
         }
         return null;
@@ -614,6 +629,7 @@ export class Interpreter {
   private computePureExpr(node: ASTNode): boolean {
     switch (node.type) {
       case 'Number':
+      case 'Boolean':
       case 'String':
       case 'Variable':
         return true;
@@ -651,6 +667,9 @@ export class Interpreter {
       case 'Number':
         return node.value;
 
+      case 'Boolean':
+        return node.value ? 1 : 0;
+
       case 'String':
         return node.value;
 
@@ -674,6 +693,7 @@ export class Interpreter {
         switch (node.operator) {
           case '-': return l - r;
           case '*': return l * r;
+          case '^': return Math.pow(l, r);
           case '/':
             if (r === 0) {
               throw new TurtleError(
@@ -741,6 +761,9 @@ export class Interpreter {
       case 'Number':
         return node.value;
 
+      case 'Boolean':
+        return node.value ? 1 : 0;
+
       case 'String':
         return node.value;
 
@@ -764,6 +787,7 @@ export class Interpreter {
         switch (node.operator) {
           case '-': return l - r;
           case '*': return l * r;
+          case '^': return Math.pow(l, r);
           case '/':
             if (r === 0) {
               throw new TurtleError(

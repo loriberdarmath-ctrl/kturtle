@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo, useDeferredValue } from 'react';
 import { TurtleCanvas, TurtleCanvasHandle } from './components/TurtleCanvas';
 import { CodeEditor, CodeEditorHandle } from './components/CodeEditor';
 import { InspectorPane, InspectorTab } from './components/InspectorPane';
@@ -24,6 +24,7 @@ const defaultCode = examples[defaultExample];
 
 /** Speed slider positions → ms per command. 0 is instant. */
 const SPEED_STEPS = [0, 30, 75, 150, 300, 600, 1200] as const;
+const APP_UI_SCALES = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
 export function App() {
   const { t, locale, setLocale, locales } = useT();
@@ -46,7 +47,10 @@ export function App() {
   const editorRef = useRef<CodeEditorHandle>(null);
   const interpreterRef = useRef<Interpreter | null>(null);
   const fileMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const moreMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const langMenuTriggerRef = useRef<HTMLButtonElement>(null);
+  const toolbarToolsAreaRef = useRef<HTMLDivElement>(null);
+  const toolbarToolsMeasureRef = useRef<HTMLDivElement>(null);
 
   const [turtle, setTurtle] = useState<TurtleState>({
     x: 200,
@@ -77,6 +81,7 @@ export function App() {
   // Speed: index 0..6 → instant..very slow. A finer slider replaces the old
   // 5-option dropdown and lets the user feel the speed change continuously.
   const [speedIdx, setSpeedIdx] = useState<number>(0);
+  const [appUiScale, setAppUiScale] = useState<number>(0.75);
   const [executingLine, setExecutingLine] = useState<number | undefined>(undefined);
   const [output, setOutput] = useState<string[]>([]);
   const [variables, setVariables] = useState<Record<string, number | string>>({});
@@ -85,7 +90,9 @@ export function App() {
   const [canvasZoomDisplay, setCanvasZoomDisplay] = useState(1);
   const [inspectorVisible, setInspectorVisible] = useState(true);
   const [showFileMenu, setShowFileMenu] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showLangMenu, setShowLangMenu] = useState(false);
+  const [toolbarToolsCollapsed, setToolbarToolsCollapsed] = useState(false);
 
   // ── Mobile-only UI state ────────────────────────────────────────────
   // Which of the three stacked workspaces is visible on phones. Defaults
@@ -188,6 +195,7 @@ export function App() {
     // via DOM. No React state, no re-render, no memo checks.
     if (s && dArr && dLen >= 0) {
       canvasRef.current?.renderFrame(s, dArr, dLen);
+      committedDrawingsLenRef.current = dLen;
     }
     if (l !== null) {
       editorRef.current?.setExecutingLineImperative(l);
@@ -259,7 +267,7 @@ export function App() {
     // watching at animation speeds (>0ms per step). At instant speed
     // the Inspector would re-render 60× a second for no observable
     // benefit — the run is over before the eye resolves any snapshot.
-    liveVarsDuringRunRef.current = currentSpeedMs > 0;
+    liveVarsDuringRunRef.current = currentSpeedMs > 0 && !isMobile;
 
     // Collect tokenizer errors (only unterminated strings currently throw
     // synchronously — tokenize can't easily recover from unknown chars so
@@ -353,9 +361,15 @@ export function App() {
       pendingErrorsListRef.current = null;
       pendingErrorsVersionRef.current = -1;
 
+      const finalDrawingsLen = result.cancelled
+        ? Math.min(committedDrawingsLenRef.current, result.drawings.length)
+        : result.drawings.length;
+
+      canvasRef.current?.preserveLiveFrame(result.turtle, result.drawings, finalDrawingsLen);
+
       setTurtle(result.turtle);
       setDrawings(result.drawings);
-      setDrawingsLen(result.drawings.length);
+      setDrawingsLen(finalDrawingsLen);
       setOutput(result.output);
       setVariables(result.variables);
       setFunctionNames(result.functionNames);
@@ -364,7 +378,7 @@ export function App() {
       // Tell the canvas it can drop its "live inputs" cache — the React
       // props we just committed now match what's already painted, and
       // further repaints (zoom, resize) should trust the props.
-      canvasRef.current?.endRun();
+      canvasRef.current?.endRun({ promoteToSvg: !result.cancelled });
 
       if (result.errors.length > 0) {
         setInspectorTab('errors');
@@ -493,6 +507,170 @@ export function App() {
     return t('toolbar.speed.step');
   }, [speedIdx, t]);
 
+  useLayoutEffect(() => {
+    const area = toolbarToolsAreaRef.current;
+    const measure = toolbarToolsMeasureRef.current;
+    if (!area || !measure) return;
+
+    let raf = 0;
+    const update = () => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        const available = area.getBoundingClientRect().width;
+        const required = measure.getBoundingClientRect().width;
+        const shouldCollapse = required > available + 1;
+        setToolbarToolsCollapsed(prev => (prev === shouldCollapse ? prev : shouldCollapse));
+        if (!shouldCollapse) setShowMoreMenu(false);
+      });
+    };
+
+    update();
+    const resizeObserver = new ResizeObserver(update);
+    resizeObserver.observe(area);
+    resizeObserver.observe(measure);
+    window.addEventListener('resize', update, { passive: true });
+    document.fonts?.ready.then(update).catch(() => {});
+
+    return () => {
+      cancelAnimationFrame(raf);
+      resizeObserver.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, [appUiScale, locale, speedLabel]);
+
+  const renderUiScaleControl = () => (
+    <label
+      className="flex-shrink-0 inline-flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg border border-line bg-white/80"
+      title={`UI scale: ${Math.round(appUiScale * 100)}%`}
+    >
+      <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M20 8V4h-4M4 16v4h4M20 16v4h-4" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6M12 9v6" />
+      </svg>
+      <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">UI</span>
+      <select
+        value={appUiScale}
+        onChange={e => setAppUiScale(Number(e.target.value))}
+        aria-label="UI scale"
+        className="bg-transparent text-[12.5px] text-ink-900 outline-none appearance-none pr-5 cursor-pointer font-mono"
+        style={{
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%235c564c'><path d='M5.25 7.5l4.75 5 4.75-5'/></svg>\")",
+          backgroundRepeat: 'no-repeat',
+          backgroundPosition: 'right 2px center',
+          backgroundSize: '12px',
+        }}
+      >
+        {APP_UI_SCALES.map(scale => (
+          <option key={scale} value={scale}>{Math.round(scale * 100)}%</option>
+        ))}
+      </select>
+    </label>
+  );
+
+  const renderSpeedControl = () => (
+    <div
+      className="flex-shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2 py-1.5 rounded-lg border border-line bg-white/80"
+      title={`${t('toolbar.speed')}: ${speedLabel}`}
+    >
+      <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+      </svg>
+      <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.speed')}</span>
+      <input
+        type="range"
+        min={0}
+        max={SPEED_STEPS.length - 1}
+        step={1}
+        value={speedIdx}
+        onChange={e => setSpeedIdx(Number(e.target.value))}
+        className="w-16 md:w-20 lg:w-24 speed-slider"
+        aria-label={t('toolbar.speed')}
+      />
+      <span className="hidden xl:inline text-[11px] text-ink-700 font-mono tab-nums w-14 text-right">{speedLabel}</span>
+    </div>
+  );
+
+  const renderInlineTools = () => (
+    <>
+      <label
+        className="flex-shrink-0 relative inline-flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg border border-line bg-white/80"
+        title={t('toolbar.examples')}
+      >
+        <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
+        </svg>
+        <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.examples')}</span>
+        <select
+          onChange={e => {
+            if (e.target.value) {
+              setCode(examples[e.target.value]);
+              resetCanvas();
+            }
+          }}
+          aria-label={t('toolbar.examples')}
+          className="bg-transparent text-[12.5px] text-ink-900 outline-none appearance-none pr-5 cursor-pointer max-w-[120px] md:max-w-[140px] lg:max-w-none"
+          defaultValue=""
+          style={{
+            backgroundImage:
+              "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%235c564c'><path d='M5.25 7.5l4.75 5 4.75-5'/></svg>\")",
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'right 2px center',
+            backgroundSize: '12px',
+          }}
+        >
+          <option value="">{t('toolbar.examples.choose')}</option>
+          {Object.keys(examples).map(name => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        type="button"
+        onClick={() => setShowColorPicker(true)}
+        className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
+        title={t('toolbar.colorPicker')}
+        aria-label={t('toolbar.colorPicker')}
+      >
+        <span
+          className="w-4 h-4 rounded-sm border border-line"
+          style={{
+            background:
+              'conic-gradient(from 0deg, #e86a2a, #e6c36a, #9ab897, #5b9bd5, #8c6ba8, #c06c84, #e86a2a)',
+          }}
+          aria-hidden
+        />
+        <span className="hidden xl:inline">{t('toolbar.colorPicker')}</span>
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setShowDirectionPicker(true)}
+        className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
+        title={t('toolbar.direction')}
+        aria-label={t('toolbar.direction')}
+      >
+        <svg
+          viewBox="0 0 16 16"
+          className="w-4 h-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.4"
+          aria-hidden
+        >
+          <circle cx="8" cy="8" r="6.2" />
+          <path d="M8 4.2 L9.4 8.4 L8 10.2 L6.6 8.4 Z" fill="currentColor" stroke="none" />
+          <line x1="8" y1="1.6" x2="8" y2="2.8" strokeLinecap="round" />
+          <line x1="8" y1="13.2" x2="8" y2="14.4" strokeLinecap="round" />
+          <line x1="1.6" y1="8" x2="2.8" y2="8" strokeLinecap="round" />
+          <line x1="13.2" y1="8" x2="14.4" y2="8" strokeLinecap="round" />
+        </svg>
+        <span className="hidden xl:inline">{t('toolbar.direction')}</span>
+      </button>
+    </>
+  );
+
   // ── Mobile branch — simpler single-column shell with a bottom tab bar.
   // All the run/edit/save logic is shared with desktop; the mobile shell
   // just re-arranges the UI. We pass everything as one bundle to keep
@@ -544,7 +722,11 @@ export function App() {
   }
 
   return (
-    <div className="app-shell flex flex-col text-ink-900 overflow-hidden">
+    <div
+      className="app-ui-scale-frame text-ink-900 overflow-hidden"
+      style={{ '--app-ui-scale': appUiScale } as React.CSSProperties}
+    >
+    <div className="app-shell app-ui-scale-root flex flex-col text-ink-900 overflow-hidden">
       {/* ─────────── HEADER / TOOLBAR ─────────── */}
       {/* Layout strategy: three horizontal zones.
           [left cluster: brand + file + run controls]
@@ -565,6 +747,7 @@ export function App() {
             type="button"
             onClick={() => {
               setShowFileMenu(v => !v);
+              setShowMoreMenu(false);
               setShowLangMenu(false);
             }}
             aria-haspopup="menu"
@@ -588,6 +771,7 @@ export function App() {
             onClose={() => setShowFileMenu(false)}
             align="start"
             side="bottom"
+            scale={appUiScale}
             className="w-56 py-1.5 bg-white border border-line rounded-lg shadow-[0_12px_32px_-8px_rgba(26,24,20,0.18)]"
           >
             <MenuItem onClick={() => { newFile(); setShowFileMenu(false); }}>
@@ -666,107 +850,111 @@ export function App() {
               Mobile (< sm): falls back to a hidden-scrollbar horizontal
               scroller as a graceful safety net. */}
           <div
-            className="toolbar-scroll flex items-center gap-1.5 min-w-0 flex-1 overflow-x-auto overflow-y-hidden sm:overflow-visible"
+            ref={toolbarToolsAreaRef}
+            className="toolbar-scroll relative flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden"
             style={{ scrollbarWidth: 'none' }}
           >
-          {/* Speed slider — continuous, replaces the old dropdown */}
-          <div
-            className="flex-shrink-0 inline-flex items-center gap-1.5 pl-2 pr-2 py-1.5 rounded-lg border border-line bg-white/80"
-            title={`${t('toolbar.speed')}: ${speedLabel}`}
-          >
-            <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
-            <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.speed')}</span>
-            <input
-              type="range"
-              min={0}
-              max={SPEED_STEPS.length - 1}
-              step={1}
-              value={speedIdx}
-              onChange={e => setSpeedIdx(Number(e.target.value))}
-              className="w-16 md:w-20 lg:w-24 speed-slider"
-              aria-label={t('toolbar.speed')}
-            />
-            <span className="hidden xl:inline text-[11px] text-ink-700 font-mono tab-nums w-14 text-right">{speedLabel}</span>
-          </div>
-
-          {/* Examples */}
-          <label
-            className="flex-shrink-0 relative inline-flex items-center gap-1.5 pl-2 pr-1 py-1.5 rounded-lg border border-line bg-white/80"
-            title={t('toolbar.examples')}
-          >
-            <svg className="w-3.5 h-3.5 text-ink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.8} aria-hidden>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h10" />
-            </svg>
-            <span className="hidden xl:inline text-[10.5px] text-ink-500 uppercase tracking-[0.08em]">{t('toolbar.examples')}</span>
-            <select
-              onChange={e => {
-                if (e.target.value) {
-                  setCode(examples[e.target.value]);
-                  resetCanvas();
-                }
-              }}
-              aria-label={t('toolbar.examples')}
-              className="bg-transparent text-[12.5px] text-ink-900 outline-none appearance-none pr-5 cursor-pointer max-w-[120px] md:max-w-[140px] lg:max-w-none"
-              style={{
-                backgroundImage:
-                  "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='%235c564c'><path d='M5.25 7.5l4.75 5 4.75-5'/></svg>\")",
-                backgroundRepeat: 'no-repeat',
-                backgroundPosition: 'right 2px center',
-                backgroundSize: '12px',
-              }}
+            {renderUiScaleControl()}
+            {renderSpeedControl()}
+            {!toolbarToolsCollapsed && renderInlineTools()}
+            {toolbarToolsCollapsed && (
+              <button
+                ref={moreMenuTriggerRef}
+                type="button"
+                onClick={() => {
+                  setShowMoreMenu(v => !v);
+                  setShowFileMenu(false);
+                  setShowLangMenu(false);
+                }}
+                aria-haspopup="menu"
+                aria-expanded={showMoreMenu}
+                className={`flex-shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-[12.5px] rounded-lg toolbar-btn ${
+                  showMoreMenu ? 'bg-paper-soft text-ink-900' : 'text-ink-700 hover:text-ink-900 hover:bg-paper-soft/80'
+                }`}
+              >
+                {t('toolbar.tools')}
+                <svg
+                  className={`w-3 h-3 opacity-60 transition-transform ${showMoreMenu ? 'rotate-180' : ''}`}
+                  viewBox="0 0 12 12"
+                  fill="currentColor"
+                  aria-hidden
+                >
+                  <path d="M3 4.5L6 7.5 9 4.5z" />
+                </svg>
+              </button>
+            )}
+            <div
+              ref={toolbarToolsMeasureRef}
+              className="pointer-events-none invisible absolute left-0 top-0 flex items-center gap-1.5 whitespace-nowrap"
+              inert={true}
+              aria-hidden="true"
             >
-              <option value="">{t('toolbar.examples.choose')}</option>
-              {Object.keys(examples).map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-          </label>
-
-          {/* Color picker */}
-          <button
-            onClick={() => setShowColorPicker(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
-            title={t('toolbar.colorPicker')}
-            aria-label={t('toolbar.colorPicker')}
-          >
-            <span
-              className="w-4 h-4 rounded-sm border border-line"
-              style={{
-                background:
-                  'conic-gradient(from 0deg, #e86a2a, #e6c36a, #9ab897, #5b9bd5, #8c6ba8, #c06c84, #e86a2a)',
-              }}
-              aria-hidden
-            />
-            <span className="hidden xl:inline">{t('toolbar.colorPicker')}</span>
-          </button>
-
-          {/* Direction chooser — opens a compass dial that emits
-              turnleft/turnright/direction commands. */}
-          <button
-            onClick={() => setShowDirectionPicker(true)}
-            className="flex-shrink-0 inline-flex items-center gap-1.5 px-2 lg:px-2.5 py-2 text-[12.5px] text-ink-700 hover:text-ink-900 hover:bg-paper-soft rounded-lg toolbar-btn"
-            title={t('toolbar.direction')}
-            aria-label={t('toolbar.direction')}
-          >
-            <svg
-              viewBox="0 0 16 16"
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              aria-hidden
-            >
-              <circle cx="8" cy="8" r="6.2" />
-              <path d="M8 4.2 L9.4 8.4 L8 10.2 L6.6 8.4 Z" fill="currentColor" stroke="none" />
-              <line x1="8" y1="1.6" x2="8" y2="2.8" strokeLinecap="round" />
-              <line x1="8" y1="13.2" x2="8" y2="14.4" strokeLinecap="round" />
-              <line x1="1.6" y1="8" x2="2.8" y2="8" strokeLinecap="round" />
-              <line x1="13.2" y1="8" x2="14.4" y2="8" strokeLinecap="round" />
-            </svg>
-            <span className="hidden xl:inline">{t('toolbar.direction')}</span>
-          </button>
+              {renderUiScaleControl()}
+              {renderSpeedControl()}
+              {renderInlineTools()}
+            </div>
+            {toolbarToolsCollapsed && (
+              <Popover
+                triggerRef={moreMenuTriggerRef}
+                open={showMoreMenu}
+                onClose={() => setShowMoreMenu(false)}
+                align="end"
+                side="bottom"
+                scale={appUiScale}
+                className="w-64 py-1.5 bg-white border border-line rounded-lg shadow-[0_12px_32px_-8px_rgba(26,24,20,0.18)]"
+              >
+              <label className="block px-3 py-2 text-[12px] text-ink-700">
+                <span className="mb-1 block text-[10.5px] uppercase tracking-[0.08em] text-ink-500">{t('toolbar.examples')}</span>
+                <select
+                  onChange={e => {
+                    if (e.target.value) {
+                      setCode(examples[e.target.value]);
+                      resetCanvas();
+                      setShowMoreMenu(false);
+                    }
+                  }}
+                  aria-label={t('toolbar.examples')}
+                  className="w-full rounded-md border border-line bg-white px-2 py-1.5 text-[12.5px] text-ink-900 outline-none"
+                  defaultValue=""
+                >
+                  <option value="">{t('toolbar.examples.choose')}</option>
+                  {Object.keys(examples).map(name => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="my-1 border-t border-line" />
+              <MenuItem onClick={() => { setShowColorPicker(true); setShowMoreMenu(false); }}>
+                <span className="inline-flex items-center gap-2">
+                  <span
+                    className="w-3.5 h-3.5 rounded-sm border border-line"
+                    style={{
+                      background:
+                        'conic-gradient(from 0deg, #e86a2a, #e6c36a, #9ab897, #5b9bd5, #8c6ba8, #c06c84, #e86a2a)',
+                    }}
+                    aria-hidden
+                  />
+                  {t('toolbar.colorPicker')}
+                </span>
+              </MenuItem>
+              <MenuItem onClick={() => { setShowDirectionPicker(true); setShowMoreMenu(false); }}>
+                <span className="inline-flex items-center gap-2">
+                  <svg
+                    viewBox="0 0 16 16"
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="1.4"
+                    aria-hidden
+                  >
+                    <circle cx="8" cy="8" r="6.2" />
+                    <path d="M8 4.2 L9.4 8.4 L8 10.2 L6.6 8.4 Z" fill="currentColor" stroke="none" />
+                  </svg>
+                  {t('toolbar.direction')}
+                </span>
+              </MenuItem>
+              </Popover>
+            )}
 
           </div>
           {/* ── END MIDDLE ZONE ── */}
@@ -819,6 +1007,7 @@ export function App() {
               onClick={() => {
                 setShowLangMenu(v => !v);
                 setShowFileMenu(false);
+                setShowMoreMenu(false);
               }}
               aria-haspopup="menu"
               aria-expanded={showLangMenu}
@@ -848,6 +1037,7 @@ export function App() {
               onClose={() => setShowLangMenu(false)}
               align="end"
               side="bottom"
+              scale={appUiScale}
               className="w-48 py-1 bg-white border border-line rounded-lg shadow-[0_12px_32px_-8px_rgba(26,24,20,0.18)]"
             >
               <div className="px-3 pt-1 pb-1.5 text-[10.5px] uppercase tracking-[0.12em] text-ink-500 font-medium">
@@ -1193,6 +1383,7 @@ export function App() {
         </div>
       )}
 
+    </div>
     </div>
   );
 }
