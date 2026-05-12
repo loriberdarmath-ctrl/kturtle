@@ -46,6 +46,8 @@ export interface InterpreterResult {
   errors: TurtleError[];
   /** Legacy single-error field. Always equals `errors[0]` when present. */
   error?: TurtleError;
+  /** True when execution ended because the user pressed Stop. */
+  cancelled: boolean;
 }
 
 /**
@@ -350,6 +352,7 @@ export class Interpreter {
       functionNames: Array.from(this.functions.keys()),
       errors: this.errors.slice(),
       error: this.errors[0],
+      cancelled: this.cancelled,
     };
   }
 
