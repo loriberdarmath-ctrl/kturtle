@@ -36,7 +36,7 @@ export function App() {
   // a lower priority so fast typing doesn't stutter while React repaints
   // every syntax-highlighted char in the editor.
   const deferredCode = useDeferredValue(code);
-  const [fileName, setFileName] = useState<string>('turtle.turtle');
+  const [fileName, setFileName] = useState<string>(defaultExample);
   const [exportedImage, setExportedImage] = useState<string | null>(null);
   const [showExportModal, setShowExportModal] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
