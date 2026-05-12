@@ -454,7 +454,7 @@ export function App() {
   // language. We also remember the plain text in our recent-files list so
   // re-opening inside the web app doesn't have to round-trip the wrapping.
   const saveFile = useCallback(async () => {
-    const finalName = fileName.endsWith('.turtle') ? fileName : `${fileName}.turtle`;
+    const finalName = /\.(k?turtle)$/i.test(fileName) ? fileName : `${fileName}.turtle`;
     const serialized = toKTurtleFile(code);
     const result = await saveTurtleFile(serialized, finalName);
     if (result.ok && !result.cancelled) {
@@ -481,7 +481,7 @@ export function App() {
 
   const exportSvg = useCallback(async () => {
     const svg = drawingsToSvg(turtle, drawings);
-    const base = fileName.replace(/\.(turtle|logo|txt)$/i, '') || 'kturtle-drawing';
+    const base = fileName.replace(/\.(kturtle|turtle|logo|txt)$/i, '') || 'kturtle-drawing';
     await exportSvgFile(svg, `${base}.svg`);
   }, [turtle, drawings, fileName]);
 
@@ -1361,7 +1361,7 @@ export function App() {
               <button
                 onClick={async () => {
                   const base =
-                    fileName.replace(/\.(turtle|logo|txt)$/i, '') || 'kturtle-drawing';
+                    fileName.replace(/\.(kturtle|turtle|logo|txt)$/i, '') || 'kturtle-drawing';
                   await exportPngFile(exportedImage, `${base}.png`);
                   setShowExportModal(false);
                 }}

@@ -68,10 +68,14 @@ export function fromKTurtleFile(raw: string): string {
   }
   // Drop the first line (magic) — the rest is the program body.
   const body = cleaned.substring(cleaned.indexOf('\n') + 1);
-  // Strip every @(name) → name. Keep whitespace / line breaks exactly as
-  // written. The regex is deliberately non-greedy + constrained to word
-  // characters so it never eats across unbalanced parens.
-  return body.replace(/@\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)/g, '$1');
+  // Strip every KTurtle translation marker to its raw token:
+  //   @ (learn) -> learn
+  //   @(forward) -> forward
+  //   @ (,)     -> ,
+  // Upstream examples include optional whitespace between `@` and `(`,
+  // and wrap punctuation such as commas, so this intentionally accepts
+  // any single marker payload up to the next `)`.
+  return body.replace(/@\s*\(\s*([^)]*?)\s*\)/g, (_, token: string) => token.trim());
 }
 
 /**
