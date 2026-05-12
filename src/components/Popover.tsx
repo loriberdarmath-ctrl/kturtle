@@ -43,6 +43,8 @@ interface PopoverProps {
   viewportMargin?: number;
   /** Fixed min width; if the menu is narrower than the trigger, matches it. */
   minWidth?: number;
+  /** Visual UI scale when the popover is portaled outside a scaled app root. */
+  scale?: number;
   /** className for the popover container. */
   className?: string;
   children: ReactNode;
@@ -57,6 +59,7 @@ export function Popover({
   gap = 6,
   viewportMargin = 8,
   minWidth,
+  scale = 1,
   className = '',
   children,
 }: PopoverProps) {
@@ -74,7 +77,9 @@ export function Popover({
     const tRect = trigger.getBoundingClientRect();
     // Measure content at its natural size; we'll clamp after.
     const cRect = content.getBoundingClientRect();
-    const cw = Math.max(cRect.width, minWidth ?? 0);
+    const visualScale = scale > 0 ? scale : 1;
+    const minVisualWidth = minWidth ? minWidth * visualScale : 0;
+    const cw = Math.max(cRect.width, minVisualWidth);
     const ch = cRect.height;
 
     const vw = window.innerWidth;
@@ -103,8 +108,12 @@ export function Popover({
     if (left + cw > vw - M) left = vw - cw - M;
     if (left < M) left = M;
 
-    setPos({ top, left, width: minWidth ? Math.max(minWidth, tRect.width) : undefined });
-  }, [align, gap, minWidth, side, triggerRef, viewportMargin]);
+    setPos({
+      top,
+      left,
+      width: minWidth ? Math.max(minWidth, tRect.width / visualScale) : undefined,
+    });
+  }, [align, gap, minWidth, scale, side, triggerRef, viewportMargin]);
 
   // Re-measure on every open, and whenever the window changes size.
   useLayoutEffect(() => {
@@ -163,6 +172,8 @@ export function Popover({
         top: pos.top,
         left: pos.left,
         minWidth: pos.width,
+        transform: scale !== 1 ? `scale(${scale})` : undefined,
+        transformOrigin: '0 0',
       }}
     >
       {children}
