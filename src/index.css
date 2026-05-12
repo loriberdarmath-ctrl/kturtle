@@ -340,8 +340,8 @@ textarea {
 
 /* Disable backdrop-blur for users who prefer reduced motion. Blur is
    cheap on modern GPUs but brutally slow on old mobile hardware and on
-   Windows machines without hardware acceleration. The bg-*/<alpha>
-   Tailwind tokens already give us a readable semi-opaque fallback. */
+   Windows machines without hardware acceleration. The semi-opaque
+   background tokens still give us a readable fallback. */
 @media (prefers-reduced-motion: reduce) {
   .backdrop-blur,
   .backdrop-blur-sm,

@@ -2,7 +2,7 @@
 name = "kturtle"
 # Keep the Rust crate version aligned with the app version in
 # tauri.conf.json (this one is the on-disk binary metadata).
-version = "0.1.0"
+version = "0.1.7"
 description = "KTurtle — a quiet place to draw with code"
 authors = ["KTurtle contributors"]
 edition = "2021"
