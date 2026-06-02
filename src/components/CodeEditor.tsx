@@ -44,6 +44,7 @@ const COMMANDS = new Set([
 
 const KEYWORDS = new Set(['if', 'else', 'while', 'repeat', 'for', 'to', 'step', 'learn', 'return', 'exit']);
 const LOGICAL = new Set(['and', 'or', 'not']);
+const BOOLEANS = new Set(['true', 'false']);
 
 // ── Hot-path helpers ──────────────────────────────────────────────────
 // The tokenizer below is the single most-called function in the editor
@@ -192,8 +193,8 @@ const highlightCode = (code: string): string => {
       }
     }
 
-    // +, -, *, / → operator
-    if (c === 43 || c === 45 || c === 42 || c === 47) {
+    // +, -, *, /, ^ → operator
+    if (c === 43 || c === 45 || c === 42 || c === 47 || c === 94) {
       emit(T_OPERATOR, i, i + 1);
       i++;
       continue;
@@ -206,7 +207,7 @@ const highlightCode = (code: string): string => {
       const word = code.substring(start, i);
       const lower = word.toLowerCase();
       let type: number;
-      if (KEYWORDS.has(lower)) type = T_KEYWORD;
+      if (KEYWORDS.has(lower) || BOOLEANS.has(lower)) type = T_KEYWORD;
       else if (LOGICAL.has(lower)) type = T_LOGICAL;
       else if (COMMANDS.has(lower)) type = T_COMMAND;
       else type = T_TEXT;
@@ -224,7 +225,7 @@ const highlightCode = (code: string): string => {
         cc === 35 || cc === 34 || cc === 36 ||
         cc === 123 || cc === 125 ||
         cc === 61 || cc === 33 || cc === 60 || cc === 62 ||
-        cc === 43 || cc === 45 || cc === 42 || cc === 47 ||
+        cc === 43 || cc === 45 || cc === 42 || cc === 47 || cc === 94 ||
         isAlpha(cc) || isDigit(cc)
       ) break;
       i++;

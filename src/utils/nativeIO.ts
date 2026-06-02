@@ -268,17 +268,17 @@ function webOpenText(accept: string): Promise<{ name: string; content: string } 
 //  Public API
 // ────────────────────────────────────────────────────────────────────
 
-/** Save a .turtle source file. */
+/** Save a .turtle / .kturtle source file. */
 export async function saveTurtleFile(
   contents: string,
   suggestedName: string,
 ): Promise<SaveResult> {
-  const filename = suggestedName.endsWith('.turtle') ? suggestedName : `${suggestedName}.turtle`;
+  const filename = /\.(k?turtle)$/i.test(suggestedName) ? suggestedName : `${suggestedName}.turtle`;
   const platform = detect();
   try {
     if (platform === 'tauri') {
       return await tauriSaveText(contents, filename, [
-        { name: 'KTurtle files', extensions: ['turtle'] },
+        { name: 'KTurtle files', extensions: ['kturtle', 'turtle'] },
         { name: 'All files', extensions: ['*'] },
       ]);
     }
@@ -292,13 +292,13 @@ export async function saveTurtleFile(
   return { ok: true, path: filename };
 }
 
-/** Open a .turtle (or .logo / .txt) source file. */
+/** Open a .kturtle / .turtle (or .logo / .txt) source file. */
 export async function openTurtleFile(): Promise<{ name: string; content: string } | null> {
   const platform = detect();
   try {
     if (platform === 'tauri') {
       return await tauriOpenText([
-        { name: 'KTurtle files', extensions: ['turtle', 'logo', 'txt'] },
+        { name: 'KTurtle files', extensions: ['kturtle', 'turtle', 'logo', 'txt'] },
         { name: 'All files', extensions: ['*'] },
       ]);
     }
@@ -312,7 +312,7 @@ export async function openTurtleFile(): Promise<{ name: string; content: string 
   // filter to "any file" on Capacitor and let the user pick, then
   // trust the content itself — `fromKTurtleFile()` gracefully handles
   // non-.turtle text anyway.
-  const accept = platform === 'capacitor' ? '*/*' : '.turtle,.logo,.txt,text/plain';
+  const accept = platform === 'capacitor' ? '*/*' : '.kturtle,.turtle,.logo,.txt,text/plain';
   return webOpenText(accept);
 }
 
